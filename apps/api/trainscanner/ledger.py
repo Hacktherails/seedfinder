@@ -1,4 +1,4 @@
-"""ECO points ledger (SQLite). Points used by an order are held when checkout opens, so they cannot be spent
+"""Seeds ledger (SQLite). Points used by an order are held when checkout opens, so they cannot be spent
 twice; they are released if the payment is abandoned. Earned points are credited once, when the payment is
 confirmed (webhook or return from Checkout, whichever comes first)."""
 

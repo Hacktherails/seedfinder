@@ -47,11 +47,11 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
             for jid in journey_ids:
                 PAID_JOURNEYS[jid] = session["id"]
             if meta.get("order_id"):
-                ledger.mark_paid(meta["order_id"])  # credits earned ECO points, idempotent
+                ledger.mark_paid(meta["order_id"])  # credits earned seeds, idempotent
             log.info("journeys %s paid (session %s)", ",".join(journey_ids), session["id"])
     elif event.type == "checkout.session.expired":
         order_id = (event.data.object.to_dict().get("metadata") or {}).get("order_id")
         if order_id:
-            ledger.cancel(order_id)  # abandoned checkout: release held ECO points
+            ledger.cancel(order_id)  # abandoned checkout: release held seeds
 
     return {"received": True}

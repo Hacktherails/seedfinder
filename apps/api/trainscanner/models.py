@@ -46,7 +46,7 @@ class Journey(BaseModel):
     operators: list[str]
     tags: list[str]  # cheapest | fastest | greenest
     legs: list[Leg]
-    green: bool = False  # eligible to earn and spend ECO points
+    green: bool = False  # eligible to earn and spend seeds
     eco_points: int = 0  # ECO points this ticket earns
     travellers: int = 1
     travel_class: int = 2
@@ -97,7 +97,7 @@ class SignInRequest(BaseModel):
 
 
 class Quote(BaseModel):
-    """What the traveller pays for a basket, ECO points included. Computed server-side only."""
+    """What the traveller pays for a basket, seeds included. Computed server-side only."""
 
     subtotal_cents: int
     discount_cents: int
@@ -134,7 +134,7 @@ class BasketRequest(BaseModel):
 class Basket(BaseModel):
     journeys: list[Journey]
     stays: list[Stay] = []
-    total_cents: int  # tickets + stays, before ECO points; quote.total_cents is what gets charged
+    total_cents: int  # tickets + stays, before seeds; quote.total_cents is what gets charged
     currency: str = "EUR"
     co2_g: int
     co2_plane_g: int
