@@ -21,6 +21,7 @@ export type TripAction =
   | { type: 'swapEnds' }
   | { type: 'setDepartDate'; date: string }
   | { type: 'setReturnDate'; date: string | null }
+  | { type: 'moveStop'; from: number; to: number } // drag reorder, any stop
   | { type: 'reset' }
 
 export const MAX_STOPS = 6
@@ -72,6 +73,17 @@ export function tripReducer(trip: Trip, action: TripAction): Trip {
       return { ...trip, departDate: action.date }
     case 'setReturnDate':
       return { ...trip, returnDate: action.date }
+    case 'moveStop': {
+      const { from, to } = action
+      if (from === to || from < 0 || to < 0 || from >= stops.length || to >= stops.length) return trip
+      const next = [...stops]
+      next.splice(to, 0, ...next.splice(from, 1))
+      // Same station twice in a row makes an empty segment.
+      if (next.some((s, i) => i > 0 && same(next[i - 1].station, s.station))) return trip
+      // Ends never sleep; a stop dragged into the middle becomes a one-night stopover.
+      const last = next.length - 1
+      return { ...trip, stops: next.map((s, i) => ({ ...s, nights: i === 0 || i === last ? 0 : s.nights || 1 })) }
+    }
     case 'reset':
       return initialTrip()
   }
@@ -89,9 +101,33 @@ export function segmentPlans(trip: Trip): SegmentPlan[] {
   let date = trip.departDate
   for (let i = 0; i < trip.stops.length - 1; i++) {
     if (i > 0) date = addDays(date, trip.stops[i].nights)
-    out.push({ from: trip.stops[i].station, to: trip.stops[i + 1].station, date })
+    const [from, to] = [trip.stops[i].station, trip.stops[i + 1].station]
+    out.push({ from, to, date })
   }
-  if (trip.returnDate && trip.stops.length >= 2)
-    out.push({ from: trip.stops.at(-1)!.station, to: trip.stops[0].station, date: trip.returnDate })
+  if (trip.returnDate && trip.stops.length >= 2) {
+    const [from, to] = [trip.stops.at(-1)!.station, trip.stops[0].station]
+    out.push({ from, to, date: trip.returnDate })
+  }
+  return out
+}
+
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000)
+
+export interface StaySlot {
+  key: string
+  station: Station
+  checkin: string
+  nights: number
+  after: number // index of the segment that arrives here
+}
+
+/** Where the traveller sleeps: stopovers with nights, and the destination until the return. */
+export function staySlots(trip: Trip, plans: SegmentPlan[]): StaySlot[] {
+  const n = trip.stops.length
+  const out: StaySlot[] = []
+  const slot = (station: Station, checkin: string, nights: number, after: number) =>
+    nights > 0 && out.push({ key: `${station.id}@${checkin}+${nights}`, station, checkin, nights, after })
+  for (let i = 1; i < n - 1; i++) slot(trip.stops[i].station, plans[i - 1].date, trip.stops[i].nights, i - 1)
+  if (trip.returnDate && n >= 2) slot(trip.stops[n - 1].station, plans[n - 2].date, daysBetween(plans[n - 2].date, trip.returnDate), n - 2)
   return out
 }

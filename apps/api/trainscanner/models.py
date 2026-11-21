@@ -21,14 +21,14 @@ class Stop(BaseModel):
 
 
 class Leg(BaseModel):
-    mode: str  # HIGHSPEED_RAIL, LONG_DISTANCE, REGIONAL_RAIL, NIGHT_RAIL, BUS, WALK…
+    mode: str  # HIGHSPEED_RAIL, LONG_DISTANCE, REGIONAL_RAIL, NIGHT_RAIL, SUBURBAN, WALK…
     operator: str | None
     line: str | None
     origin: Stop
     destination: Stop
     duration_s: int
     distance_km: float
-    price_cents: int
+    price_cents: int  # for the whole party
     co2_g: int
     path: list[list[float]]  # [[lon, lat], …]
 
@@ -46,6 +46,8 @@ class Journey(BaseModel):
     operators: list[str]
     tags: list[str]  # cheapest | fastest | greenest
     legs: list[Leg]
+    travellers: int = 1
+    travel_class: int = 2
 
 
 class JourneySearch(BaseModel):
@@ -65,12 +67,29 @@ class Network(BaseModel):
     corridors: list[Corridor]
 
 
+class Stay(BaseModel):
+    id: str
+    kind: str  # hostel | hotel | boutique
+    name: str
+    city: str
+    lat: float
+    lon: float
+    checkin: str  # ISO date
+    nights: int
+    guests: int
+    per_night_cents: int
+    price_cents: int  # all nights, all rooms
+    currency: str = "EUR"
+
+
 class BasketRequest(BaseModel):
     journey_ids: list[str] = Field(min_length=1, max_length=10)
+    stay_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class Basket(BaseModel):
     journeys: list[Journey]
+    stays: list[Stay] = []
     total_cents: int
     currency: str = "EUR"
     co2_g: int
@@ -79,6 +98,7 @@ class Basket(BaseModel):
 
 class CheckoutRequest(BaseModel):
     journey_ids: list[str] = Field(min_length=1, max_length=10)
+    stay_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class CheckoutResponse(BaseModel):

@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { ArrowRight, Calendar, Clock3, Compass, Leaf, ShieldCheck, Sparkles, Train } from 'lucide-react'
 import { api } from './api/client'
-import type { Basket, Journey, JourneySearch, LngLat, Network, Station } from './api/types'
+import type { Basket, Journey, JourneySearch, LngLat, Network, Station, Stay } from './api/types'
 import { fmtKg, fmtPrice, tomorrow } from './format'
 import { greatCircle, journeyPath } from './map/geo'
 import TrainMap from './map/TrainMap'
+import { defaultOptions, travellers, type TripOptions } from './options'
 import JourneyCard from './panel/JourneyCard'
+import OptionsPanel from './panel/OptionsPanel'
 import Sheet, { type Snap } from './panel/Sheet'
 import StationCard from './panel/StationCard'
+import StayList from './panel/StayList'
 import StopsEditor from './panel/StopsEditor'
 import { load, save, type Passport } from './storage'
-import { initialTrip, MAX_STOPS, segmentPlans, tripReducer } from './trip'
+import { initialTrip, MAX_STOPS, segmentPlans, staySlots, tripReducer } from './trip'
 
 type Sort = 'best' | 'cheapest' | 'fastest' | 'greenest'
 const SORTS: Sort[] = ['best', 'cheapest', 'fastest', 'greenest']
@@ -53,6 +56,14 @@ function PlannerPage({ seed }: PlannerPageProps) {
 
   const [network, setNetwork] = useState<Network | null>(null)
   const [trip, dispatch] = useReducer(tripReducer, undefined, initialTrip)
+  const [options, setOptionsState] = useState<TripOptions>(() => ({ ...defaultOptions(), ...load('options', {}) }))
+  const setOptions = (o: TripOptions) => {
+    setOptionsState(o)
+    save('options', o)
+  }
+  const [stayOffers, setStayOffers] = useState<Record<string, Stay[]>>({})
+  const [staySel, setStaySel] = useState<Record<string, string | null>>({})
+  const [activeStay, setActiveStay] = useState<string | null>(null)
   const [focus, setFocus] = useState<Station | null>(null)
   const [snap, setSnap] = useState<Snap>('half')
   const [searches, setSearches] = useState<JourneySearch[]>([])
@@ -124,7 +135,13 @@ function PlannerPage({ seed }: PlannerPageProps) {
   }, [])
 
   const plans = segmentPlans(trip)
-  const planKey = plans.map((p) => `${p.from.id}>${p.to.id}@${p.date}`).join('|')
+  const { party, travelClass, maxTransfers, anyStation } = options
+  const guests = travellers(party)
+  // Everything that changes the offers: itinerary + options (stays are fetched apart)
+  const planKey = plans.length
+    ? plans.map((p) => `${p.from.id}>${p.to.id}@${p.date}`).join('|') +
+      `#${JSON.stringify(party)}/${travelClass}/${maxTransfers}/${anyStation}`
+    : ''
 
   // Search every segment shortly after the trip stops changing
   useEffect(() => {
@@ -139,10 +156,22 @@ function PlannerPage({ seed }: PlannerPageProps) {
     setError(null)
     setSnap('peek')
     const t = setTimeout(() => {
-      Promise.all(plans.map((p) => api.journeys(p.from.id, p.to.id, p.date, ctrl.signal))).then(
+      const near = (s: Station) => (anyStation ? `${s.lat},${s.lon}` : undefined)
+      const query = (p: (typeof plans)[number]) => ({
+        from: p.from.id,
+        to: p.to.id,
+        date: p.date,
+        max_transfers: maxTransfers,
+        ...party,
+        travel_class: travelClass,
+        from_near: near(p.from),
+        to_near: near(p.to),
+      })
+      Promise.all(plans.map((p) => api.journeys(query(p), ctrl.signal))).then(
         (r) => {
           setSearches(r)
           setActiveSeg(0)
+          setActiveStay(null)
           setSelected(
             Object.fromEntries(r.flatMap((s, i) => (s.journeys.length ? [[i, sortJourneys(s.journeys, 'best')[0].id]] : []))),
           )
@@ -174,13 +203,39 @@ function PlannerPage({ seed }: PlannerPageProps) {
   const journeys = useMemo(() => (segment ? sortJourneys(segment.journeys, sort) : []), [segment, sort])
   const activeSelected = selected[activeSeg] ?? null
 
+  // Stays: one slot wherever the trip spends nights, offers fetched per slot
+  const slots = options.stays ? staySlots(trip, plans) : []
+  const slotsKey = slots.map((s) => s.key).join('|') + `x${guests}`
+  useEffect(() => {
+    if (!slots.length) return
+    const ctrl = new AbortController()
+    for (const s of slots) {
+      const q = { city: s.station.name, lat: s.station.lat, lon: s.station.lon, checkin: s.checkin, nights: s.nights, guests }
+      api.stays(q, ctrl.signal).then(
+        (offers) => {
+          setStayOffers((o) => ({ ...o, [s.key]: offers }))
+          // Preselect the mid-range room the first time a slot appears
+          setStaySel((sel) => (s.key in sel && offers.some((x) => x.id === sel[s.key]) ? sel : { ...sel, [s.key]: offers[1]?.id ?? null }))
+        },
+        () => {},
+      )
+    }
+    return () => ctrl.abort()
+  }, [slotsKey])
+  const stayIds = slots.flatMap((s) => {
+    const id = staySel[s.key]
+    return id && stayOffers[s.key]?.some((x) => x.id === id) ? [id] : []
+  })
+  const staySlot = slots.find((s) => s.key === activeStay)
+
   const ids = searches.map((_, i) => selected[i])
-  const basketKey = ids.length && ids.every(Boolean) ? ids.join(',') : ''
+  const basketKey = ids.length && ids.every(Boolean) ? `${ids.join(',')};${stayIds.join(',')}` : ''
   useEffect(() => {
     setBasketError(null)
     if (!basketKey) return
     let stale = false
-    api.basket(basketKey.split(',')).then(
+    const [js, ss] = basketKey.split(';').map((x) => x.split(',').filter(Boolean))
+    api.basket(js, ss).then(
       (data) => !stale && setBasket({ key: basketKey, data }),
       (e: Error) => !stale && setBasketError(e.message),
     )
@@ -215,12 +270,19 @@ function PlannerPage({ seed }: PlannerPageProps) {
   const choose = (i: number, id: string) => setSelected((s) => ({ ...s, [i]: id }))
   const chooseAndAdvance = (id: string) => {
     choose(activeSeg, id)
+    // Next stop of the trip: the stay where this segment arrives, else the next unchosen segment
+    const stay = slots.find((s) => s.after === activeSeg)
+    if (stay) return setActiveStay(stay.key)
     const next = searches.findIndex((_, i) => i !== activeSeg && !selected[i])
     if (next >= 0) setActiveSeg(next)
   }
+  const openSeg = (i: number) => {
+    setActiveSeg(i)
+    setActiveStay(null)
+  }
 
   const book = () => {
-    const picked = basketKey.split(',')
+    const [picked, stays] = basketKey.split(';').map((x) => x.split(',').filter(Boolean))
     const stops: LngLat[] = trip.stops.map((s) => [s.station.lon, s.station.lat])
     if (trip.returnDate) stops.push(stops[0])
     setBooking(true)
@@ -241,7 +303,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
         },
       })
     }
-    api.checkout(picked).then(
+    api.checkout(picked, stays).then(
       ({ url }) => {
         checkoutUrl.current = url
         go()
@@ -325,24 +387,45 @@ function PlannerPage({ seed }: PlannerPageProps) {
         ) : (
           <>
             <StopsEditor trip={trip} dispatch={dispatch} onFocus={tapStation} />
+            <OptionsPanel options={options} onChange={setOptions} />
 
-            {plans.length > 1 && (
-              <nav className="mx-4 mt-3 flex gap-2 overflow-x-auto pb-1">
-                {plans.map((p, i) => (
-                  <button
-                    key={`${p.from.id}>${p.to.id}@${p.date}`}
-                    type="button"
-                    onClick={() => setActiveSeg(i)}
-                    className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] whitespace-nowrap ${activeSeg === i ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--card)]' : 'border-[var(--line)] text-[var(--muted)]'}`}
-                  >
-                    {trip.returnDate && i === plans.length - 1 ? '↩ Return' : i + 1} · {p.from.name} → {p.to.name} · {dayLabel(p.date)}
-                    {selected[i] ? ' ✓' : ''}
-                  </button>
-                ))}
+            {(plans.length > 1 || slots.length > 0) && (
+              <nav aria-label="Trip steps" className="mx-4 mt-4 flex gap-2 overflow-x-auto pb-1">
+                {plans.flatMap((p, i) => {
+                  const chip = (key: string, on: boolean, onClick: () => void, label: string) => (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-current={on ? 'step' : undefined}
+                      onClick={onClick}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] whitespace-nowrap ${on ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--card)]' : 'border-[var(--line)] text-[var(--muted)]'}`}
+                    >
+                      {label}
+                    </button>
+                  )
+                  const seg = chip(
+                    `seg-${i}`,
+                    !staySlot && activeSeg === i,
+                    () => openSeg(i),
+                    `${trip.returnDate && i === plans.length - 1 ? '↩' : i + 1} · ${p.from.name} → ${p.to.name} · ${dayLabel(p.date)}${selected[i] ? ' ✓' : ''}`,
+                  )
+                  const stay = slots.find((s) => s.after === i)
+                  return stay
+                    ? [
+                        seg,
+                        chip(
+                          `stay-${stay.key}`,
+                          staySlot?.key === stay.key,
+                          () => setActiveStay(stay.key),
+                          `🛏 ${stay.station.name} · ${stay.nights} night${stay.nights > 1 ? 's' : ''}${staySel[stay.key] ? ' ✓' : ''}`,
+                        ),
+                      ]
+                    : [seg]
+                })}
               </nav>
             )}
 
-            {landed && segment && (
+            {landed && segment && !staySlot && (
               <nav className="mx-4 mt-3 grid grid-cols-4 rounded-xl bg-[var(--hover)] p-1 text-[13px]">
                 {SORTS.map((s) => (
                   <button
@@ -386,7 +469,14 @@ function PlannerPage({ seed }: PlannerPageProps) {
                   <p className="mt-1">Type two stations, or tap the red dots on the map. We compare every operator and combine them into one ticket.</p>
                 </div>
               )}
-              {landed && status === 'done' && (
+              {staySlot && (
+                <StayList
+                  offers={stayOffers[staySlot.key]}
+                  selected={staySel[staySlot.key] ?? null}
+                  onSelect={(id) => setStaySel((s) => ({ ...s, [staySlot.key]: id }))}
+                />
+              )}
+              {landed && status === 'done' && !staySlot && (
                 <ul className="space-y-2">
                   {journeys.map((j) => (
                     <JourneyCard
@@ -411,7 +501,13 @@ function PlannerPage({ seed }: PlannerPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[13px]">
                     <div className="text-[18px] font-semibold tracking-tight">{total ? fmtPrice(total.total_cents, total.currency) : '…'}</div>
-                    {total && <div className="text-[var(--muted)]">You keep {fmtKg(Math.max(0, total.co2_plane_g - total.co2_g))} CO₂ out of the sky</div>}
+                    {total && (
+                      <div className="text-[var(--muted)]">
+                        {total.journeys.length} ticket{total.journeys.length > 1 ? 's' : ''}
+                        {total.stays.length ? ` + ${total.stays.length} stay${total.stays.length > 1 ? 's' : ''}` : ''} · 🌱{' '}
+                        {fmtKg(Math.max(0, total.co2_plane_g - total.co2_g))} saved
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"
