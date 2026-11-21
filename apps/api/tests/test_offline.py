@@ -1,5 +1,7 @@
 """Demo safety net: Transitous answers are replayed from the disk cache when the network is down."""
 
+import json
+
 import httpx
 import pytest
 
@@ -44,12 +46,24 @@ class _Ok:
 
 
 @pytest.fixture(autouse=True)
-def fresh_lru():
+def fresh_lru(monkeypatch):
+    """Clean memo caches, and record live answers into the per-test CACHE_DIR (what warm_cache.py does)."""
+
+    def record(key, payload):
+        kind, digest = key.split("/")
+        path = transitous.CACHE_DIR / kind / f"{digest}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload))
+        transitous._loaded.clear()
+
+    monkeypatch.setattr(transitous, "RECORDER", record)
     transitous.plan.cache_clear()
     transitous.geocode.cache_clear()
+    transitous._loaded.clear()
     yield
     transitous.plan.cache_clear()
     transitous.geocode.cache_clear()
+    transitous._loaded.clear()
 
 
 def _down(*a, **k):
@@ -102,8 +116,6 @@ DEMO_TRIPS = [  # landing page default + suggested trips (apps/web/src/App.tsx)
 @pytest.mark.parametrize("stops", DEMO_TRIPS, ids=lambda s: " → ".join(s))
 def test_demo_trips_work_without_wifi(client, monkeypatch, stops):
     """Every segment of the demo trips is in the committed cache and searchable fully offline."""
-    import json
-
     monkeypatch.setattr(transitous, "CACHE_DIR", transitous.DATA_DIR / "cache")  # the committed one
     monkeypatch.setattr(settings, "offline_demo", True)
     monkeypatch.setattr(transitous._client, "get", lambda *a, **k: pytest.fail("network called"))

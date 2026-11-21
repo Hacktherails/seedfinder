@@ -9,7 +9,7 @@ from trainscanner import ledger
 from trainscanner.config import settings
 from trainscanner.routes.stripe_webhook import PAID_JOURNEYS
 
-SECRET = "whsec_test"
+SIGNING = "whsec_test"
 URL = "/api/stripe/webhook"
 
 
@@ -32,7 +32,7 @@ def _event(type_: str, payment_status: str = "paid", order_id: str | None = None
     ).encode()
 
 
-def _sign(payload: bytes, secret: str = SECRET) -> str:
+def _sign(payload: bytes, secret: str = SIGNING) -> str:
     t = int(time.time())
     sig = hmac.new(secret.encode(), f"{t}.".encode() + payload, hashlib.sha256).hexdigest()
     return f"t={t},v1={sig}"
@@ -40,7 +40,7 @@ def _sign(payload: bytes, secret: str = SECRET) -> str:
 
 @pytest.fixture
 def webhook_secret(monkeypatch):
-    monkeypatch.setattr(settings, "stripe_webhook_secret", SECRET)
+    monkeypatch.setattr(settings, "stripe_webhook_secret", SIGNING)
     PAID_JOURNEYS.clear()
     yield
     PAID_JOURNEYS.clear()
