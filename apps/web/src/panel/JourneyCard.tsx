@@ -11,13 +11,17 @@ interface Props {
   onClick: () => void
   onBook: () => void
   booking: boolean
+  actionLabel: string
 }
 
-export default function JourneyCard({ j, active, open, onHover, onClick, onBook, booking }: Props) {
+export default function JourneyCard({ j, active, open, onHover, onClick, onBook, booking, actionLabel }: Props) {
   const first = j.legs[0]
   const last = j.legs[j.legs.length - 1]
   const saved = Math.max(0, 1 - j.co2_g / Math.max(1, j.co2_plane_g))
   const transit = j.legs.filter((l) => l.mode !== 'WALK')
+  const night = j.legs.some((l) => l.mode === 'NIGHT_RAIL')
+  const day = (iso: string, tz?: string | null) => new Intl.DateTimeFormat('en-CA', { timeZone: tz ?? undefined }).format(new Date(iso))
+  const nextDay = day(j.arrival, last.destination.tz) > day(j.departure, first.origin.tz)
 
   return (
     <li
@@ -31,6 +35,7 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
             <div className="font-mono text-[17px] tracking-tight">
               {fmtTime(j.departure, first.origin.tz)} <span className="text-[var(--muted)]">→</span>{' '}
               {fmtTime(j.arrival, last.destination.tz)}
+              {nextDay && <sup className="ml-0.5 text-[11px] text-[var(--muted)]">+1</sup>}
             </div>
             <div className="mt-0.5 text-[13px] text-[var(--muted)]">
               {fmtDur(j.duration_s)} · {j.transfers === 0 ? 'Direct' : `${j.transfers} change${j.transfers > 1 ? 's' : ''}`}
@@ -61,6 +66,12 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
             />
           ))}
         </div>
+
+        {night && (
+          <div className="mt-3 rounded-lg bg-[var(--hover)] px-2.5 py-1.5 text-[12px] font-medium">
+            🌙 Night train · one hotel night saved
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between text-[12px]">
           <span className="truncate text-[var(--muted)]">{j.operators.join(' · ')}</span>
@@ -97,7 +108,7 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
             disabled={booking}
             className="mt-4 flex w-full items-center justify-between rounded-xl bg-[var(--ink)] px-4 py-3 text-[15px] font-medium text-[var(--card)] transition-transform active:scale-[0.98] disabled:opacity-60"
           >
-            <span>{booking ? 'Opening checkout…' : 'Book all tickets'}</span>
+            <span>{booking ? 'Opening checkout…' : actionLabel}</span>
             <span>{fmtPrice(j.price_cents, j.currency)} →</span>
           </button>
           <p className="mt-2 text-center text-[11px] text-[var(--muted)]">

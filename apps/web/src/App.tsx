@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api } from './api/client'
-import type { Journey, JourneySearch, Network, Station } from './api/types'
-import { fmtKg, tomorrow } from './format'
+import type { Basket, Journey, JourneySearch, Network, Station } from './api/types'
+import { fmtKg, fmtPrice } from './format'
+import { greatCircle, journeyPath } from './map/geo'
 import TrainMap from './map/TrainMap'
 import JourneyCard from './panel/JourneyCard'
-import StationInput from './panel/StationInput'
+import Sheet, { type Snap } from './panel/Sheet'
+import StationCard from './panel/StationCard'
+import StopsEditor from './panel/StopsEditor'
 import { load, save, type Passport } from './storage'
+import { initialTrip, MAX_STOPS, segmentPlans, tripReducer } from './trip'
 
-const PANEL_W = 400
 type Sort = 'best' | 'cheapest' | 'fastest' | 'greenest'
 const SORTS: Sort[] = ['best', 'cheapest', 'fastest', 'greenest']
 
@@ -27,91 +30,184 @@ function sortJourneys(js: Journey[], sort: Sort): Journey[] {
   return by((j) => p(j) * 0.45 + d(j) * 0.4 + c(j) * 0.15)
 }
 
+const PEEK_PX = 150
+const hasWebGL = !!document.createElement('canvas').getContext('webgl2')
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const dayLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+
+/** One synthetic journey for the whole trip, so the ride plays every segment in a row. */
+function combine(js: Journey[]): Journey {
+  const first = js[0]
+  const sum = (f: (j: Journey) => number) => js.reduce((a, j) => a + f(j), 0)
+  return {
+    id: 'trip',
+    departure: first.departure,
+    arrival: js[js.length - 1].arrival,
+    duration_s: sum((j) => j.duration_s),
+    transfers: sum((j) => j.transfers),
+    price_cents: sum((j) => j.price_cents),
+    currency: first.currency,
+    co2_g: sum((j) => j.co2_g),
+    co2_plane_g: sum((j) => j.co2_plane_g),
+    operators: [...new Set(js.flatMap((j) => j.operators))],
+    tags: [],
+    legs: js.flatMap((j) => j.legs),
+  }
+}
+
+type LoaderStatus = 'idle' | 'loading' | 'done' | 'error'
+
 export default function App() {
   const [network, setNetwork] = useState<Network | null>(null)
-  const [from, setFrom] = useState<Station | null>(null)
-  const [to, setTo] = useState<Station | null>(null)
-  const [date, setDate] = useState(tomorrow())
-  const [result, setResult] = useState<JourneySearch | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [trip, dispatch] = useReducer(tripReducer, undefined, initialTrip)
+  const [focus, setFocus] = useState<Station | null>(null)
+  const [snap, setSnap] = useState<Snap>('half')
+  const [searches, setSearches] = useState<JourneySearch[]>([])
+  const [status, setStatus] = useState<LoaderStatus>('idle')
+  const [landed, setLanded] = useState(false) // loader train reached the end; results may show
+  const [retry, setRetry] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [activeSeg, setActiveSeg] = useState(0)
+  const [selected, setSelected] = useState<Record<number, string>>({})
   const [sort, setSort] = useState<Sort>('best')
   const [hovered, setHovered] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [basket, setBasket] = useState<{ key: string; data: Basket } | null>(null)
+  const [basketError, setBasketError] = useState<string | null>(null)
   const [booking, setBooking] = useState(false)
   const [ride, setRide] = useState<Journey | null>(null)
   const [arrived, setArrived] = useState<Journey | null>(null)
   const [passport, setPassport] = useState<Passport>(() => load('passport', { stamps: [], co2SavedG: 0, trips: 0 }))
-
-  const restoring = useRef(false)
+  const [isPhone, setIsPhone] = useState(() => !window.matchMedia('(min-width: 768px)').matches)
+  const rideCities = useRef<string[]>([])
 
   useEffect(() => {
     api.network().then(setNetwork, () => {})
   }, [])
 
-  // Back from Stripe: replay the booked journey as a ride, then stamp the passport
   useEffect(() => {
-    const paid = new URLSearchParams(location.search).get('paid')
-    const pending = load<{ search: JourneySearch; id: string } | null>('pending', null, 'session')
-    if (!paid || !pending || pending.id !== paid) return
-    history.replaceState(null, '', '/')
-    const j = pending.search.journeys.find((x) => x.id === paid)
-    if (!j) return
-    restoring.current = true
-    setFrom(pending.search.origin)
-    setTo(pending.search.destination)
-    setResult({ ...pending.search, journeys: [j] })
-    setSelected(j.id)
-    setTimeout(() => setRide(j), 1800)
+    const mq = window.matchMedia('(min-width: 768px)')
+    const on = () => setIsPhone(!mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
   }, [])
 
-  // Search as soon as both ends are set
+  // Back from Stripe: replay the booked trip as one ride, then stamp the passport
   useEffect(() => {
-    if (!from || !to || from.id === to.id) return
-    if (restoring.current) {
-      restoring.current = false
+    const paid = new URLSearchParams(location.search).get('paid')
+    const pending = load<{ searches: JourneySearch[]; ids: string[] } | null>('pending', null, 'session')
+    if (!paid || !pending || pending.ids.join(',') !== paid) return
+    history.replaceState(null, '', '/')
+    const js = pending.ids.map((id) => pending.searches.flatMap((s) => s.journeys).find((j) => j.id === id))
+    if (js.some((j) => !j)) return
+    rideCities.current = pending.searches.flatMap((s) => [s.origin.name, s.destination.name])
+    // No cleanup: StrictMode re-runs this effect after ?paid is already stripped, so a cleared timer would never ride.
+    setTimeout(() => setRide(combine(js as Journey[])), 1800)
+  }, [])
+
+  const plans = segmentPlans(trip)
+  const planKey = plans.map((p) => `${p.from.id}>${p.to.id}@${p.date}`).join('|')
+
+  // Search every segment shortly after the trip stops changing
+  useEffect(() => {
+    if (!planKey) {
+      setSearches([])
+      setStatus('idle')
       return
     }
     const ctrl = new AbortController()
-    setLoading(true)
+    setLanded(false)
+    setStatus('loading')
     setError(null)
-    setSelected(null)
-    api.journeys(from.id, to.id, date, ctrl.signal).then(
-      (r) => {
-        setResult(r)
-        setLoading(false)
-      },
-      (e: Error) => {
-        if (ctrl.signal.aborted) return
-        setError(e.message)
-        setResult(null)
-        setLoading(false)
-      },
-    )
-    return () => ctrl.abort()
-  }, [from, to, date])
+    setSnap('peek')
+    const t = setTimeout(() => {
+      Promise.all(plans.map((p) => api.journeys(p.from.id, p.to.id, p.date, ctrl.signal))).then(
+        (r) => {
+          setSearches(r)
+          setActiveSeg(0)
+          setSelected(
+            Object.fromEntries(r.flatMap((s, i) => (s.journeys.length ? [[i, sortJourneys(s.journeys, 'best')[0].id]] : []))),
+          )
+          setStatus('done')
+        },
+        (e: Error) => {
+          if (ctrl.signal.aborted) return
+          setError(e.message)
+          setStatus('error')
+        },
+      )
+    }, 400)
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [planKey, retry])
 
-  const journeys = useMemo(() => (result ? sortJourneys(result.journeys, sort) : []), [result, sort])
+  const onArrived = () => {
+    setLanded(true)
+    setSnap('half')
+  }
+  // Without the map there is no loader train to wait for
+  useEffect(() => {
+    if (!hasWebGL && status === 'done') onArrived()
+  }, [status])
+
+  const segment = searches[activeSeg]
+  const journeys = useMemo(() => (segment ? sortJourneys(segment.journeys, sort) : []), [segment, sort])
+  const activeSelected = selected[activeSeg] ?? null
+
+  const ids = searches.map((_, i) => selected[i])
+  const basketKey = ids.length && ids.every(Boolean) ? ids.join(',') : ''
+  useEffect(() => {
+    setBasketError(null)
+    if (!basketKey) return
+    let stale = false
+    api.basket(basketKey.split(',')).then(
+      (data) => !stale && setBasket({ key: basketKey, data }),
+      (e: Error) => !stale && setBasketError(e.message),
+    )
+    return () => {
+      stale = true
+    }
+  }, [basketKey])
+  const total = basket?.key === basketKey ? basket.data : null
 
   const stations = useMemo(() => {
     const s = new Map<string, Station>()
     for (const h of network?.hubs ?? []) s.set(h.name, h)
-    for (const j of result?.journeys ?? [])
+    for (const j of segment?.journeys ?? [])
       for (const l of j.legs)
         if (l.mode !== 'WALK')
           for (const p of [l.origin, l.destination]) s.set(p.name, { id: p.name, name: p.name, lat: p.lat, lon: p.lon })
     return [...s.values()]
-  }, [network, result])
+  }, [network, segment])
 
-  const book = async (j: Journey) => {
-    if (!result) return
+  const segmentPaths = useMemo(
+    () =>
+      plans.map((p, i) => {
+        const s = searches[i]
+        const j = s?.origin.id === p.from.id && s.destination.id === p.to.id ? s.journeys.find((x) => x.id === selected[i]) : undefined
+        return j ? journeyPath(j) : greatCircle([p.from.lon, p.from.lat], [p.to.lon, p.to.lat])
+      }),
+    [planKey, searches, selected],
+  )
+
+  const choose = (i: number, id: string) => setSelected((s) => ({ ...s, [i]: id }))
+  const chooseAndAdvance = (id: string) => {
+    choose(activeSeg, id)
+    const next = searches.findIndex((_, i) => i !== activeSeg && !selected[i])
+    if (next >= 0) setActiveSeg(next)
+  }
+
+  const book = async () => {
     setBooking(true)
     try {
-      save('pending', { search: result, id: j.id }, 'session')
-      const { url } = await api.checkout(j.id)
+      const picked = basketKey.split(',')
+      save('pending', { searches, ids: picked }, 'session')
+      const { url } = await api.checkout(picked)
       location.href = url
     } catch (e) {
-      setError((e as Error).message)
+      setBasketError((e as Error).message)
       setBooking(false)
     }
   }
@@ -120,9 +216,8 @@ export default function App() {
     const j = ride
     setRide(null)
     if (!j) return
-    const city = j.legs[j.legs.length - 1].destination.name
     const next: Passport = {
-      stamps: [...new Set([...passport.stamps, city])],
+      stamps: [...new Set([...passport.stamps, ...rideCities.current])],
       co2SavedG: passport.co2SavedG + Math.max(0, j.co2_plane_g - j.co2_g),
       trips: passport.trips + 1,
     }
@@ -131,30 +226,47 @@ export default function App() {
     setArrived(j)
   }
 
-  const swap = () => {
-    setFrom(to)
-    setTo(from)
+  const tapStation = (s: Station) => {
+    setFocus((f) => (f?.id === s.id ? f : s))
+    setSnap('half')
   }
+
+  const last = trip.stops.length - 1
+  const focusIndex = focus ? trip.stops.findIndex((s) => s.station.id === focus.id) : -1
+  const role = focusIndex < 0 ? 'none' : focusIndex === 0 ? 'origin' : focusIndex === last ? 'destination' : 'stop'
+  const thenUnfocus = (action: () => void) => () => {
+    action()
+    setFocus(null)
+  }
+
+  const loading = status === 'loading' || (status === 'done' && !landed)
+  const visiblePx = snap === 'peek' ? PEEK_PX : snap === 'half' ? window.innerHeight / 2 : window.innerHeight - 48
+  const padding = isPhone ? { top: 0, right: 0, left: 0, bottom: visiblePx } : { top: 0, right: 0, bottom: 0, left: 412 }
 
   return (
     <div className="relative h-full overflow-hidden">
-      <TrainMap
-        network={network}
-        journeys={result?.journeys ?? []}
-        activeId={hovered ?? selected}
-        ride={ride}
-        stations={stations}
-        panelWidth={PANEL_W}
-        onHover={setHovered}
-        onSelect={setSelected}
-        onStationClick={(s) => (!from || (from && to) ? (setFrom(s), setTo(null), setResult(null)) : setTo(s))}
-        onRideEnd={endRide}
-      />
+      {hasWebGL && (
+        <TrainMap
+          network={network}
+          journeys={ride ? [ride] : (segment?.journeys ?? [])}
+          activeId={hovered ?? activeSelected}
+          ride={ride}
+          stations={stations}
+          padding={padding}
+          trip={trip}
+          segmentPaths={segmentPaths}
+          focus={focus}
+          onExitFocus={() => setFocus(null)}
+          dispatch={dispatch}
+          loader={{ status, onArrived }}
+          onHover={setHovered}
+          onSelect={(id) => choose(activeSeg, id)}
+          onStationClick={tapStation}
+          onRideEnd={endRide}
+        />
+      )}
 
-      <aside
-        style={{ width: PANEL_W }}
-        className={`absolute top-3 bottom-3 left-3 flex max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-3xl bg-[var(--card)] shadow-[0_8px_40px_rgba(0,0,0,0.12)] transition-transform duration-500 max-sm:top-auto max-sm:h-[58vh] ${ride ? '-translate-x-[110%]' : ''}`}
-      >
+      <Sheet snap={snap} onSnapChange={setSnap} label="Trip planner" hidden={!!ride}>
         <header className="flex items-center justify-between px-5 pt-5 pb-3">
           <h1 className="text-[17px] font-semibold tracking-tight">
             train<span className="text-[var(--red)]">●</span>scanner
@@ -167,80 +279,127 @@ export default function App() {
           </span>
         </header>
 
-        <div className="mx-4 rounded-2xl border border-[var(--line)]">
-          <div className="relative">
-            <StationInput label="From" dot="hollow" value={from} onChange={setFrom} autoFocus />
-            <div className="mx-4 border-t border-[var(--line)]" />
-            <StationInput label="To" dot="solid" value={to} onChange={setTo} />
-            <button
-              type="button"
-              onClick={swap}
-              aria-label="Swap"
-              className="absolute top-1/2 right-3 grid size-8 -translate-y-1/2 place-items-center rounded-full border border-[var(--line)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--ink)]"
-            >
-              ⇅
-            </button>
-          </div>
-          <div className="flex items-center gap-2 border-t border-[var(--line)] px-4 py-2.5 text-[13px]">
-            <span className="text-[var(--muted)]">Date</span>
-            <input
-              type="date"
-              value={date}
-              min={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => setDate(e.target.value)}
-              className="bg-transparent font-mono outline-none"
+        {focus ? (
+          <div className="px-4 pb-4">
+            <StationCard
+              station={focus}
+              role={role}
+              canInsert={trip.stops.length >= 2 && focusIndex < 0 && trip.stops.length < MAX_STOPS}
+              onStart={thenUnfocus(() =>
+                dispatch(trip.stops.length ? { type: 'setStop', index: 0, station: focus } : { type: 'pick', station: focus }),
+              )}
+              onGo={thenUnfocus(() =>
+                dispatch(trip.stops.length < 2 ? { type: 'pick', station: focus } : { type: 'setStop', index: last, station: focus }),
+              )}
+              onAddStop={thenUnfocus(() => dispatch({ type: 'insertStop', index: last, station: focus }))}
+              onClose={() => setFocus(null)}
             />
           </div>
-        </div>
+        ) : (
+          <>
+            <StopsEditor trip={trip} dispatch={dispatch} onFocus={tapStation} />
 
-        {result && (
-          <nav className="mx-4 mt-3 grid grid-cols-4 rounded-xl bg-[var(--hover)] p-1 text-[13px]">
-            {SORTS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSort(s)}
-                className={`rounded-lg py-1.5 capitalize transition-colors ${sort === s ? 'bg-[var(--card)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}
-              >
-                {s}
-              </button>
-            ))}
-          </nav>
+            {plans.length > 1 && (
+              <nav className="mx-4 mt-3 flex gap-2 overflow-x-auto pb-1">
+                {plans.map((p, i) => (
+                  <button
+                    key={`${p.from.id}>${p.to.id}@${p.date}`}
+                    type="button"
+                    onClick={() => setActiveSeg(i)}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] whitespace-nowrap ${activeSeg === i ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--card)]' : 'border-[var(--line)] text-[var(--muted)]'}`}
+                  >
+                    {trip.returnDate && i === plans.length - 1 ? '↩ Return' : i + 1} · {p.from.name} → {p.to.name} · {dayLabel(p.date)}
+                    {selected[i] ? ' ✓' : ''}
+                  </button>
+                ))}
+              </nav>
+            )}
+
+            {landed && segment && (
+              <nav className="mx-4 mt-3 grid grid-cols-4 rounded-xl bg-[var(--hover)] p-1 text-[13px]">
+                {SORTS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSort(s)}
+                    className={`rounded-lg py-1.5 capitalize transition-colors ${sort === s ? 'bg-[var(--card)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </nav>
+            )}
+
+            <section className="mt-3 px-4 pb-4">
+              {loading && (
+                <>
+                  {reducedMotion && (
+                    <p className="mb-2 text-[13px] text-[var(--muted)]">
+                      Searching {plans.length} segment{plans.length > 1 ? 's' : ''}…
+                    </p>
+                  )}
+                  <ul className="space-y-2">
+                    {[0, 1, 2].map((i) => (
+                      <li key={i} className="h-28 animate-pulse rounded-2xl bg-[var(--hover)]" />
+                    ))}
+                  </ul>
+                </>
+              )}
+              {status === 'error' && (
+                <div className="rounded-xl bg-[var(--red-soft)] p-3 text-[13px] text-[var(--red)]">
+                  <p>{error}</p>
+                  <button type="button" onClick={() => setRetry((n) => n + 1)} className="mt-2 font-medium underline">
+                    Retry
+                  </button>
+                </div>
+              )}
+              {status === 'idle' && (
+                <div className="px-1 pt-3 text-[14px] leading-relaxed text-[var(--muted)]">
+                  <p>Where to?</p>
+                  <p className="mt-1">Type two stations, or tap the red dots on the map. We compare every operator and combine them into one ticket.</p>
+                </div>
+              )}
+              {landed && status === 'done' && (
+                <ul className="space-y-2">
+                  {journeys.map((j) => (
+                    <JourneyCard
+                      key={j.id}
+                      j={j}
+                      active={(hovered ?? activeSelected) === j.id}
+                      open={activeSelected === j.id}
+                      onHover={setHovered}
+                      onClick={() => choose(activeSeg, j.id)}
+                      onBook={() => chooseAndAdvance(j.id)}
+                      booking={false}
+                      actionLabel="Choose this train"
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {landed && status === 'done' && (
+              <footer className="sticky bottom-0 border-t border-[var(--line)] bg-[var(--card)] px-4 py-3">
+                {basketError && <p className="mb-2 rounded-xl bg-[var(--red-soft)] p-2 text-[13px] text-[var(--red)]">{basketError}</p>}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[13px]">
+                    <div className="text-[18px] font-semibold tracking-tight">{total ? fmtPrice(total.total_cents, total.currency) : '…'}</div>
+                    {total && <div className="text-[var(--muted)]">You keep {fmtKg(Math.max(0, total.co2_plane_g - total.co2_g))} CO₂ out of the sky</div>}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!total || booking}
+                    onClick={book}
+                    className="rounded-xl bg-[var(--ink)] px-5 py-3 text-[15px] font-medium text-[var(--card)] disabled:opacity-40"
+                  >
+                    {plans.length > 1 ? 'Book trip' : 'Book all tickets'}
+                  </button>
+                </div>
+              </footer>
+            )}
+          </>
         )}
-
-        <section className="mt-3 min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-          {loading && (
-            <ul className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <li key={i} className="h-28 animate-pulse rounded-2xl bg-[var(--hover)]" />
-              ))}
-            </ul>
-          )}
-          {!loading && error && <p className="rounded-xl bg-[var(--red-soft)] p-3 text-[13px] text-[var(--red)]">{error}</p>}
-          {!loading && !result && !error && (
-            <div className="px-1 pt-6 text-[14px] leading-relaxed text-[var(--muted)]">
-              <p>Where to?</p>
-              <p className="mt-1">Type two stations, or tap the red dots on the map. We compare every operator and combine them into one ticket.</p>
-            </div>
-          )}
-          {!loading && result && (
-            <ul className="space-y-2">
-              {journeys.map((j) => (
-                <JourneyCard
-                  key={j.id}
-                  j={j}
-                  active={(hovered ?? selected) === j.id}
-                  open={selected === j.id}
-                  onHover={setHovered}
-                  onClick={() => setSelected(selected === j.id ? null : j.id)}
-                  onBook={() => book(j)}
-                  booking={booking}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-      </aside>
+      </Sheet>
 
       {arrived && (
         <div className="absolute inset-0 grid place-items-center bg-black/20 backdrop-blur-[2px]">

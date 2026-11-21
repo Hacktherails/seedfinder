@@ -13,6 +13,21 @@ export function haversineKm(a: LngLat, b: LngLat): number {
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
+/** Straight-on-the-globe preview between two points (spherical interpolation). */
+export function greatCircle(a: LngLat, b: LngLat, n = 48): LngLat[] {
+  const rad = Math.PI / 180
+  const vec = ([lon, lat]: LngLat) => [Math.cos(lat * rad) * Math.cos(lon * rad), Math.cos(lat * rad) * Math.sin(lon * rad), Math.sin(lat * rad)]
+  const [p, q] = [vec(a), vec(b)]
+  const w = Math.acos(Math.min(1, Math.max(-1, p[0] * q[0] + p[1] * q[1] + p[2] * q[2])))
+  if (w < 1e-9) return [a, b]
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = i / n
+    const [ka, kb] = [Math.sin((1 - t) * w) / Math.sin(w), Math.sin(t * w) / Math.sin(w)]
+    const [x, y, z] = [0, 1, 2].map((k) => ka * p[k] + kb * q[k])
+    return [Math.atan2(y, x) / rad, Math.atan2(z, Math.hypot(x, y)) / rad] as LngLat
+  })
+}
+
 /** A path with cumulative distances, so we can place a train anywhere along it. */
 export interface Track {
   path: LngLat[]
