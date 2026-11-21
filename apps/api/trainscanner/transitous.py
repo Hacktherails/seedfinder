@@ -31,20 +31,38 @@ CACHE_DIR = DATA_DIR / "cache"
 _client = httpx.Client(base_url=BASE, headers=HEADERS, timeout=httpx.Timeout(15, connect=4))
 
 
-def _cache_file(kind: str, *key: object) -> Path:
+def _cache_key(kind: str, *key: object) -> str:
     digest = hashlib.sha256(json.dumps(key, default=str).encode()).hexdigest()[:16]
-    return CACHE_DIR / kind / f"{digest}.json"
+    return f"{kind}/{digest}"
 
 
-def _write(path: Path, payload: dict) -> None:
+_index: dict[Path, dict[str, Path]] = {}
+
+
+def _cache_files() -> dict[str, Path]:
+    """Cached answers by key, listed once from disk. Reads only ever open paths from this listing, never a
+    path built from request input (no file inclusion)."""
+    if CACHE_DIR not in _index:
+        files = CACHE_DIR.glob("*/*.json") if CACHE_DIR.is_dir() else []
+        _index[CACHE_DIR] = {f"{p.parent.name}/{p.stem}": p for p in files}
+    return _index[CACHE_DIR]
+
+
+def _write(key: str, payload: dict) -> None:
+    kind, digest = key.split("/")
+    path = CACHE_DIR / kind / f"{digest}.json"  # digest is hex from sha256, kind a constant
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False))
+        _cache_files()[key] = path
     except OSError as e:  # read-only filesystem in production: caching is best effort
         log.debug("cache write failed: %s", e)
 
 
-def _read(path: Path) -> dict | None:
+def _read(key: str) -> dict | None:
+    path = _cache_files().get(key)
+    if path is None:
+        return None
     try:
         return json.loads(path.read_text())
     except (OSError, ValueError):
@@ -110,8 +128,13 @@ def _fold(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c)).strip()
 
 
+@lru_cache(maxsize=1)
+def _hubs() -> list[dict]:
+    return json.loads((DATA_DIR / "network.json").read_text())["hubs"]
+
+
 def _hub_matches(text: str) -> list[dict]:
-    hubs = json.loads((DATA_DIR / "network.json").read_text())["hubs"]
+    hubs = _hubs()
     q = _fold(text)
     return [
         {
@@ -131,17 +154,17 @@ def _hub_matches(text: str) -> list[dict]:
 
 @lru_cache(maxsize=512)
 def geocode(text: str) -> list[dict]:
-    path = _cache_file("geocode", text.strip().lower())
+    key = _cache_key("geocode", text.strip().lower())
     if not settings.offline_demo:
         try:
             r = _client.get("/v1/geocode", params={"text": text, "type": "STOP"})
             r.raise_for_status()
             hits = r.json()
-            _write(path, {"hits": hits})
+            _write(key, {"hits": hits})
             return hits
         except httpx.HTTPError as e:
             log.warning("geocode offline (%s), using cache", e)
-    cached = _read(path)
+    cached = _read(key)
     return (cached or {}).get("hits") or _hub_matches(text)
 
 
@@ -154,7 +177,7 @@ def plan(
     n: int = 8,
 ) -> list[dict]:
     """from/to are Transitous stop ids or "lat,lon" (then any station within walking reach is used)."""
-    path = _cache_file("plan", from_place, to_place, max_transfers, n)
+    key = _cache_key("plan", from_place, to_place, max_transfers, n)
     if not settings.offline_demo:
         try:
             r = _client.get(
@@ -172,11 +195,11 @@ def plan(
             r.raise_for_status()
             its = r.json().get("itineraries", [])
             if its:
-                _write(path, {"time": time_iso, "itineraries": _slim(its)})
+                _write(key, {"time": time_iso, "itineraries": _slim(its)})
             return its
         except httpx.HTTPError as e:
             log.warning("plan offline (%s), using cache", e)
-    cached = _read(path)
+    cached = _read(key)
     if not cached:
         raise RuntimeError("offline and this trip is not in the demo cache")
     days = (date.fromisoformat(time_iso[:10]) - date.fromisoformat(cached["time"][:10])).days
