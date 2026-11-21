@@ -18,7 +18,7 @@ Python 3.11 n'est **pas** à installer : uv le télécharge tout seul.
 ## 2. Installer le projet
 
 ```bash
-git clone git@github.com:UnPtitBelge/train-scanner.git
+git clone git@github.com:The-trappists/train-scanner.git
 cd train-scanner
 npm run setup            # npm install + uv sync (dépendances front + back)
 cp .env.example .env && chmod 600 .env
