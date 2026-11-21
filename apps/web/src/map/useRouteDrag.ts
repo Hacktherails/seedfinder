@@ -217,6 +217,8 @@ export function useRouteDrag(map: MlMap | null, opts: Opts): void {
       window.removeEventListener('touchend', onUp)
       window.removeEventListener('touchcancel', onTouchCancel)
       window.removeEventListener('keydown', onKey)
+      // Leaving the map page: TrainMap's own cleanup may already have called map.remove(), which drops the style
+      if (!map.style) return
       for (const id of LAYERS) if (map.getLayer(id)) map.removeLayer(id)
       if (map.getSource(SRC)) map.removeSource(SRC)
     }

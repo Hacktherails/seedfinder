@@ -1,4 +1,5 @@
-"""ECO points: earned on green tickets pro rata to the CO₂ saved vs flying, spent on future green tickets.
+"""Seeds, the reward currency (``eco_points`` in the API): earned on green tickets pro rata to the CO₂ saved
+vs flying, spent on future green tickets.
 
 Unit economics (why the programme pays for itself):
 

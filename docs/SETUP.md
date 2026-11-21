@@ -20,7 +20,7 @@ Python 3.11 n'est **pas** à installer : uv le télécharge tout seul.
 ```bash
 npm start                 # installe ce qui manque, demande les clés Stripe test une fois, lance API + front (+ webhooks)
 npm start -- --share      # idem + URL publique https (Cloudflare Quick Tunnel, sans compte), pour un téléphone ou le jury
-npm start -- --reset      # remet à zéro les points ECO (démo propre)
+npm start -- --reset      # remet à zéro les seeds (démo propre)
 npm start -- --prod       # construit et lance l'image Docker de production sur http://localhost:8100
 ```
 
@@ -38,7 +38,7 @@ Le reste de ce document détaille les étapes à la main.
    `STRIPE_WEBHOOK_SECRET`. Sans webhook, les paiements sont quand même confirmés : l'app interroge Stripe au retour.
 
 Limites du plan gratuit : le service s'endort après 15 min sans trafic (≈ 1 min de réveil, **ouvrir l'URL juste
-avant le pitch**). Le disque est éphémère, donc les points ECO repartent de zéro à chaque redéploiement.
+avant le pitch**). Le disque est éphémère, donc les seeds repartent de zéro à chaque redéploiement.
 
 ## 2. Installer le projet
 
