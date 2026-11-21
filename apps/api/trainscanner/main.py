@@ -8,7 +8,7 @@ from .config import WEB_DIST, settings
 from .models import PublicConfig
 from .routes import account, checkout, journeys, network, stations, stays, stripe_webhook
 
-app = FastAPI(title="Train Scanner API", version="0.1.0")
+app = FastAPI(title="Seedfinder API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"]
 )

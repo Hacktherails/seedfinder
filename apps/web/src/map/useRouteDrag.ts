@@ -21,7 +21,7 @@ const SNAP_PX = 40
 const LONG_PRESS_MS = 350
 const MOVE_TOLERANCE_PX = 8
 const INK = '#18181b'
-const RED = '#e5322d'
+const GREEN = '#16a34a' // same map green as TrainMap
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 /** Drag the route onto a station to insert a stopover; drag a stopover to replace it or drop it in the void to remove it.
@@ -47,7 +47,7 @@ export function useRouteDrag(map: MlMap | null, opts: Opts): void {
       type: 'circle',
       source: SRC,
       filter: ['==', ['get', 'kind'], 'snap'],
-      paint: { 'circle-radius': 16, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': RED, 'circle-stroke-width': 3 },
+      paint: { 'circle-radius': 16, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': GREEN, 'circle-stroke-width': 3 },
     })
     map.addLayer({
       id: 'drag-ghost-point',

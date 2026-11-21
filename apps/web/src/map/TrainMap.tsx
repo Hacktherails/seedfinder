@@ -12,7 +12,9 @@ import { useRouteDrag } from './useRouteDrag'
 import { useStationView } from './useStationView'
 
 const STYLE = 'https://tiles.openfreemap.org/styles/positron'
-const RED: [number, number, number] = [229, 50, 45]
+// Map-only green: brighter than the UI's --green so routes and stations pop on the grey basemap.
+const GREEN: [number, number, number] = [22, 163, 74]
+const GREEN_HEX = '#16a34a'
 const INK: [number, number, number] = [24, 24, 27]
 // Neutral livery: mid-to-dark greys that still read on the light basemap; the active train stays ink.
 const TRAIN_COLORS: [number, number, number][] = [
@@ -39,7 +41,7 @@ interface Car {
   loco: boolean
 }
 
-/** Push a polygon out by ~0.5 m so the red station shell hides the white building underneath. */
+/** Push a polygon out by ~0.5 m so the green station shell hides the white building underneath. */
 function grow(poly: number[][][]): number[][][] {
   const ring = poly[0]
   const cx = ring.reduce((a, p) => a + p[0], 0) / ring.length
@@ -177,7 +179,7 @@ export default function TrainMap(props: Props) {
         type: 'fill-extrusion',
         source: 'station-buildings',
         paint: {
-          'fill-extrusion-color': '#e5322d',
+          'fill-extrusion-color': GREEN_HEX,
           'fill-extrusion-height': ['+', height, 0.5] as never,
           'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
           'fill-extrusion-opacity': 1,
@@ -214,10 +216,11 @@ export default function TrainMap(props: Props) {
         type: 'circle',
         source: 'stations',
         paint: {
-          'circle-radius': 7,
-          'circle-color': ['case', ['==', ['get', 'role'], 'stop'], '#ffffff', '#e5322d'],
-          'circle-stroke-color': ['case', ['==', ['get', 'role'], 'stop'], '#18181b', '#ffffff'],
-          'circle-stroke-width': ['case', ['==', ['get', 'role'], 'stop'], 2.5, 2],
+          // Transit-map stops: white with a dark ring, wider than the 8 px route so they sit on it; ends a bit larger
+          'circle-radius': ['case', ['==', ['get', 'role'], 'stop'], 6, 7],
+          'circle-color': '#ffffff',
+          'circle-stroke-color': '#18181b',
+          'circle-stroke-width': 3.5,
         },
       })
       map.on('click', (e) => {
@@ -241,10 +244,12 @@ export default function TrainMap(props: Props) {
         const stop = best && live.current.trip.stops[best.index]
         if (stop) live.current.onStationClick(stop.station)
       })
+      // Layer order, top to bottom: green station buildings, trip stops, then every deck layer (routes, trains, dots)
+      map.moveLayer('station-buildings')
       setMlMap(map)
     })
 
-    // Paint the building under each station red (from the vector tiles themselves, no extra API)
+    // Paint the building under each station green (from the vector tiles themselves, no extra API)
     map.on('idle', () => {
       if (map.getZoom() < 12.5 || !map.getSource('station-buildings')) return
       const view = map.getBounds()
@@ -289,6 +294,8 @@ export default function TrainMap(props: Props) {
       const lat = map.getCenter().lat
       const m = mpp(lat, zoom)
       const hasJourneys = p.journeys.length > 0
+      // Draw every deck layer under the trip stops (and so under the green station buildings) once they exist
+      const beforeId = map.getLayer('stations-circle') ? 'stations-circle' : undefined
       const cars: Car[] = []
       const carPx = 5
       const dims = (alpha: number): [number, number, number] => [
@@ -405,7 +412,7 @@ export default function TrainMap(props: Props) {
       const stations = p.stations
       overlayRef.current?.setProps({
         pickingRadius: 8,
-        layers: [
+        layers: ([
           new PathLayer({
             id: 'corridors',
             data: tracks.corridors,
@@ -423,8 +430,8 @@ export default function TrainMap(props: Props) {
             data: tracks.journeys,
             getPath: (t: { track: Track }) => t.track.path,
             getColor: (t: { id: string }) =>
-              t.id === p.activeId ? [...RED, 255] : p.activeId ? [24, 24, 27, 40] : [24, 24, 27, 150],
-            getWidth: (t: { id: string }) => (t.id === p.activeId ? 8 : 4),
+              t.id === p.activeId ? [...GREEN, 255] : p.activeId ? [24, 24, 27, 64] : [24, 24, 27, 150],
+            getWidth: (t: { id: string }) => (t.id === p.activeId ? 8 : p.activeId ? 3 : 4),
             widthUnits: 'pixels',
             capRounded: true,
             jointRounded: true,
@@ -434,30 +441,63 @@ export default function TrainMap(props: Props) {
             onClick: (info) => info.object && p.onSelect((info.object as { id: string }).id),
             updateTriggers: { getColor: p.activeId, getWidth: p.activeId },
           }),
+          // Selected journey on top of the others: soft glow, white casing, then the green line
+          ...(
+            [
+              ['active-glow', [...GREEN, 50], 22],
+              ['active-casing', [255, 255, 255, 255], 13],
+              ['active-line', [...GREEN, 255], 8],
+            ] as const
+          ).map(
+            ([id, color, width]) =>
+              new PathLayer({
+                id,
+                data: tracks.journeys.filter((t: { id: string }) => t.id === p.activeId),
+                getPath: (t: { track: Track }) => t.track.path,
+                getColor: color as unknown as [number, number, number, number],
+                getWidth: width,
+                widthUnits: 'pixels',
+                capRounded: true,
+                jointRounded: true,
+                parameters: { depthCompare: 'always' },
+              }),
+          ),
           new ScatterplotLayer<Station>({
             id: 'stations',
             data: stations,
             getPosition: (s) => [s.lon, s.lat],
             radiusUnits: 'pixels',
-            getRadius: 6,
+            // Network stations: small white stop with a green ring, a touch wider than the 8 px route line
+            getRadius: 5,
             radiusMinPixels: 5,
-            radiusMaxPixels: 12,
+            radiusMaxPixels: 8,
             billboard: true,
             stroked: true,
             lineWidthUnits: 'pixels',
-            getLineWidth: 2,
-            getFillColor: [...RED, 255],
-            getLineColor: [255, 255, 255, 255],
+            getLineWidth: 2.5,
+            getFillColor: [255, 255, 255, 255],
+            getLineColor: [...GREEN, 255],
             parameters: { depthCompare: 'always' },
             pickable: true,
             visible: zoom < 13.5,
             onClick: (info) => info.object && !map.getCanvas().dataset.dragging && p.onStationClick(info.object),
           }),
           new PathLayer({
+            id: 'loader-casing',
+            data: lit.length ? [{ path: lit }] : [],
+            getPath: (d: { path: LngLat[] }) => d.path,
+            getColor: [255, 255, 255, 255],
+            getWidth: 13,
+            widthUnits: 'pixels',
+            capRounded: true,
+            jointRounded: true,
+            parameters: { depthCompare: 'always' },
+          }),
+          new PathLayer({
             id: 'loader-lit',
             data: lit.length ? [{ path: lit }] : [],
             getPath: (d: { path: LngLat[] }) => d.path,
-            getColor: [...RED, 255],
+            getColor: [...GREEN, 255],
             getWidth: 8,
             widthUnits: 'pixels',
             capRounded: true,
@@ -477,7 +517,7 @@ export default function TrainMap(props: Props) {
                 material: { ambient: 0.5, diffuse: 0.65, shininess: 40, specularColor: [255, 255, 255] },
               }),
           ),
-        ],
+        ]).map((layer) => layer.clone({ beforeId } as never)), // beforeId: @deck.gl/mapbox interleaved prop, untyped
       })
       raf = requestAnimationFrame(frame)
     }

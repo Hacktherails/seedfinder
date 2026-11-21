@@ -133,7 +133,7 @@ export default function Sheet(props: {
         role="button"
         tabIndex={0}
         aria-label="Resize panel"
-        className="flex h-11 shrink-0 cursor-grab items-center justify-center focus-visible:ring-2 focus-visible:ring-[var(--red)] focus-visible:outline-none active:cursor-grabbing"
+        className="flex h-11 shrink-0 cursor-grab items-center justify-center focus-visible:ring-2 focus-visible:ring-[var(--green)] focus-visible:outline-none active:cursor-grabbing"
         style={{ touchAction: 'none' }}
         onPointerDown={onDown}
         onPointerMove={onMove}

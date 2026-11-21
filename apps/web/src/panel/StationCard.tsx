@@ -23,7 +23,7 @@ export default function StationCard({ station, role, canInsert, onStart, onGo, o
           <div className="mt-0.5 flex items-center gap-2 text-[13px] text-[var(--muted)]">
             {station.country && <span>{station.country}</span>}
             {role !== 'none' && (
-              <span className="rounded-full bg-[var(--red-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--red)]">
+              <span className="rounded-full bg-[var(--green-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--green)]">
                 {ROLE_LABEL[role]}
               </span>
             )}
