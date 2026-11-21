@@ -152,15 +152,15 @@ def test_checkout_sends_tickets_and_stays_to_stripe(client, fake_plan, monkeypat
     sent = {}
 
     class Session:
-        id = "cs_test_x"
+        id = "cs_demo"
         url = "https://checkout.stripe.test/s"
-        client_secret = "cs_test_x_secret"
+        client_secret = "csval"
 
     def create(**kw):
         sent.update(kw)
         return Session()
 
-    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(settings, "stripe_secret_key", "srvval")
     monkeypatch.setattr(stripe.checkout.Session, "create", create)
     r = client.post("/api/checkout", json={"journey_ids": [jid], "stay_ids": [stay["id"]]})
     assert r.status_code == 200

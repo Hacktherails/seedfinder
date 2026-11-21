@@ -15,8 +15,17 @@ from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
+from trainscanner import transitous
 from trainscanner.config import DATA_DIR
 from trainscanner.main import app
+
+
+def record(key: str, payload: dict) -> None:
+    """Write one live Transitous answer into the committed cache (the API only ever reads it)."""
+    kind, digest = key.split("/")
+    path = transitous.CACHE_DIR / kind / f"{digest}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False))
 
 # Both directions are cached (return trips). Includes the stops of the multi-city demo.
 ROUTES = [
@@ -50,6 +59,7 @@ SEARCHES = [
 
 
 def main() -> int:
+    transitous.RECORDER = record
     client = TestClient(app)
     hubs = {h["name"]: h for h in json.loads((DATA_DIR / "network.json").read_text())["hubs"]}
     when = (date.today() + timedelta(days=1)).isoformat()

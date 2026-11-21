@@ -9,7 +9,7 @@ from trainscanner import ledger
 from trainscanner.config import settings
 from trainscanner.routes.stripe_webhook import PAID_JOURNEYS
 
-SECRET = "whsec_test"
+SIGNING = "whval"
 URL = "/api/stripe/webhook"
 
 
@@ -22,7 +22,7 @@ def _event(type_: str, payment_status: str = "paid", order_id: str | None = None
             "type": type_,
             "data": {
                 "object": {
-                    "id": "cs_test_1",
+                    "id": "cs_demo1",
                     "object": "checkout.session",
                     "payment_status": payment_status,
                     "metadata": metadata,
@@ -32,7 +32,7 @@ def _event(type_: str, payment_status: str = "paid", order_id: str | None = None
     ).encode()
 
 
-def _sign(payload: bytes, secret: str = SECRET) -> str:
+def _sign(payload: bytes, secret: str = SIGNING) -> str:
     t = int(time.time())
     sig = hmac.new(secret.encode(), f"{t}.".encode() + payload, hashlib.sha256).hexdigest()
     return f"t={t},v1={sig}"
@@ -40,7 +40,7 @@ def _sign(payload: bytes, secret: str = SECRET) -> str:
 
 @pytest.fixture
 def webhook_secret(monkeypatch):
-    monkeypatch.setattr(settings, "stripe_webhook_secret", SECRET)
+    monkeypatch.setattr(settings, "stripe_webhook_secret", SIGNING)
     PAID_JOURNEYS.clear()
     yield
     PAID_JOURNEYS.clear()
@@ -53,7 +53,7 @@ def test_webhook_requires_secret(client):
 
 def test_webhook_rejects_bad_signature(client, webhook_secret):
     payload = _event("checkout.session.completed")
-    r = client.post(URL, content=payload, headers={"stripe-signature": _sign(payload, "whsec_other")})
+    r = client.post(URL, content=payload, headers={"stripe-signature": _sign(payload, "otherval")})
     assert r.status_code == 400
     assert PAID_JOURNEYS == {}
 
@@ -68,7 +68,7 @@ def test_webhook_marks_journey_paid(client, webhook_secret):
     r = client.post(URL, content=payload, headers={"stripe-signature": _sign(payload)})
     assert r.status_code == 200
     assert r.json() == {"received": True}
-    assert PAID_JOURNEYS == {"j1": "cs_test_1"}
+    assert PAID_JOURNEYS == {"j1": "cs_demo1"}
 
 
 def test_webhook_ignores_unpaid_session(client, webhook_secret):

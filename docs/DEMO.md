@@ -1,5 +1,7 @@
 # Démo (3 min) : déroulé et messages clés
 
+Script mot à mot du pitch, calé sur ce déroulé : [`PITCH.md`](PITCH.md).
+
 ## Avant de monter sur scène
 
 ```bash
