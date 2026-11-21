@@ -75,7 +75,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
   const checkoutUrl = useRef<string | null>(null)
 
   useEffect(() => {
-    api.network().then(setNetwork, () => {})
+    api.network().then(setNetwork, () => { })
   }, [])
 
   const seeded = useRef(false)
@@ -526,7 +526,7 @@ function LandingPage({ onPlan }: LandingProps) {
   }
 
   return (
-    <div className="min-h-full bg-[var(--card)] text-[var(--ink)] antialiased">
+    <div className="h-full overflow-y-auto bg-[var(--card)] text-[var(--ink)] antialiased">
       <header className="sticky top-0 z-30 border-b border-[var(--line)]/80 bg-[var(--card)]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
           <div className="flex items-center gap-2.5">
@@ -607,6 +607,49 @@ function LandingPage({ onPlan }: LandingProps) {
             </datalist>
             <p className="mt-3 text-sm text-[var(--muted)]">Compatible mobile et desktop, carte live incluse.</p>
           </form>
+        </section>
+
+        <section className="mt-10 overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--card)]">
+          <div className="grid grid-cols-1 items-stretch md:grid-cols-[1.1fr_0.9fr]">
+            <div className="p-6 sm:p-8">
+              <p className="inline-flex items-center rounded-full border border-[var(--line)] bg-[var(--hover)] px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--muted)]">
+                Programme fidelite climat
+              </p>
+              <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Gagne des EcoTokens a chaque billet responsable.</h2>
+              <p className="mt-3 text-sm leading-relaxed text-[var(--muted)] sm:text-base">
+                A chaque trajet ferroviaire reserve avec une faible empreinte CO₂, tu cumules des EcoTokens. Plus ton itineraire est vert,
+                plus tu gagnes de tokens a utiliser ensuite pour des avantages exclusifs, des badges de profil et des reductions sur tes prochains trajets.
+              </p>
+
+              <ul className="mt-5 space-y-2 text-sm text-[var(--ink)]">
+                <li className="flex items-start gap-2">
+                  <Leaf className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                  <span>Bonus EcoToken sur les trajets identifies comme les plus ecologiques.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--red)]" />
+                  <span>Progression visible dans ton passeport voyageur et recompenses cumulatives.</span>
+                </li>
+              </ul>
+
+              <button
+                type="button"
+                onClick={() => onPlan()}
+                className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ink)] px-5 text-sm font-medium text-[var(--card)] transition hover:opacity-90"
+              >
+                Commencer a gagner des EcoTokens
+                <ArrowRight className="size-4" />
+              </button>
+            </div>
+
+            <div className="relative min-h-[260px] bg-[radial-gradient(circle_at_30%_20%,var(--green-soft),transparent_60%),var(--hover)]">
+              <img
+                src="/ecoToken.png"
+                alt="EcoToken"
+                className="absolute inset-0 h-full w-full object-contain p-8"
+              />
+            </div>
+          </div>
         </section>
 
         <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
