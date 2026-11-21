@@ -1,0 +1,18 @@
+# Render Blueprint: https://render.com/deploy?repo=https://github.com/The-trappists/train-scanner
+# Free plan: sleeps after 15 min idle (~1 min to wake: open the URL before the pitch), disk is ephemeral
+# (ECO points reset on each deploy/restart).
+services:
+  - type: web
+    name: trainscanner
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: STRIPE_SECRET_KEY # sk_test_… only
+        sync: false
+      - key: VITE_STRIPE_PUBLISHABLE_KEY # pk_test_…, served to the browser at runtime by /api/config
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET # optional: whsec_… of a Dashboard endpoint → https://<app>/api/stripe/webhook
+        sync: false

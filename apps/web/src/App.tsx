@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api/client'
-import type { Journey, JourneySearch, Network, Station } from './api/types'
+import type { Account, Journey, JourneySearch, Network, Order, Quote, Station } from './api/types'
 import { fmtKg, tomorrow } from './format'
 import TrainMap from './map/TrainMap'
+import AccountChip from './panel/AccountChip'
+import CheckoutModal from './panel/CheckoutModal'
 import JourneyCard from './panel/JourneyCard'
 import StationInput from './panel/StationInput'
 import { load, save, type Passport } from './storage'
+import { canEmbedCheckout } from './stripe'
 
 const PANEL_W = 400
 type Sort = 'best' | 'cheapest' | 'fastest' | 'greenest'
@@ -42,6 +45,16 @@ export default function App() {
   const [ride, setRide] = useState<Journey | null>(null)
   const [arrived, setArrived] = useState<Journey | null>(null)
   const [passport, setPassport] = useState<Passport>(() => load('passport', { stamps: [], co2SavedG: 0, trips: 0 }))
+  const [account, setAccountState] = useState<Account | null>(() => load<Account | null>('account', null))
+  const [checkout, setCheckout] = useState<{ clientSecret: string; orderId: string; journey: Journey; quote: Quote } | null>(
+    null,
+  )
+  const [order, setOrder] = useState<Order | null>(null)
+
+  const setAccount = useCallback((a: Account | null) => {
+    setAccountState(a)
+    save('account', a)
+  }, [])
 
   const restoring = useRef(false)
 
@@ -49,12 +62,44 @@ export default function App() {
     api.network().then(setNetwork, () => {})
   }, [])
 
-  // Back from Stripe: replay the booked journey as a ride, then stamp the passport
+  // Refresh the ECO balance of a remembered (demo) account
   useEffect(() => {
-    const paid = new URLSearchParams(location.search).get('paid')
+    const id = load<Account | null>('account', null)?.id
+    if (id) api.account(id).then(setAccount, () => setAccount(null))
+  }, [setAccount])
+
+  // The server asks Stripe whether the order is paid, then credits the earned ECO points.
+  const confirmOrder = useCallback(
+    async (orderId: string) => {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const o = await api.confirmOrder(orderId)
+          setOrder(o)
+          if (o.account) setAccount(o.account)
+          return
+        } catch {
+          await new Promise((r) => setTimeout(r, 1500))
+        }
+      }
+    },
+    [setAccount],
+  )
+
+  // Back from Stripe (hosted page or demo mode): confirm, replay the booked journey as a ride, stamp the passport
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const cancelled = params.get('cancelled')
+    if (cancelled) {
+      history.replaceState(null, '', '/')
+      api.cancelOrder(cancelled).then((o) => o.account && setAccount(o.account), () => {})
+      return
+    }
+    const paid = params.get('paid')
+    const orderId = params.get('order')
     const pending = load<{ search: JourneySearch; id: string } | null>('pending', null, 'session')
     if (!paid || !pending || pending.id !== paid) return
     history.replaceState(null, '', '/')
+    if (orderId) void confirmOrder(orderId)
     const j = pending.search.journeys.find((x) => x.id === paid)
     if (!j) return
     restoring.current = true
@@ -63,7 +108,7 @@ export default function App() {
     setResult({ ...pending.search, journeys: [j] })
     setSelected(j.id)
     setTimeout(() => setRide(j), 1800)
-  }, [])
+  }, [confirmOrder, setAccount])
 
   // Search as soon as both ends are set
   useEffect(() => {
@@ -103,17 +148,52 @@ export default function App() {
     return [...s.values()]
   }, [network, result])
 
-  const book = async (j: Journey) => {
+  const book = async (j: Journey, usePoints: boolean) => {
     if (!result) return
     setBooking(true)
+    setOrder(null)
     try {
       save('pending', { search: result, id: j.id }, 'session')
-      const { url } = await api.checkout(j.id)
-      location.href = url
+      const r = await api.checkout({
+        journey_id: j.id,
+        account_id: account?.id ?? null,
+        use_points: usePoints,
+        embedded: await canEmbedCheckout(),
+      })
+      if (r.client_secret) {
+        setCheckout({ clientSecret: r.client_secret, orderId: r.order_id, journey: j, quote: r.quote })
+        setBooking(false)
+        if (account) api.account(account.id).then(setAccount, () => {}) // points are now held
+      } else if (r.url) {
+        location.href = r.url
+      }
     } catch (e) {
       setError((e as Error).message)
       setBooking(false)
     }
+  }
+
+  // Embedded Checkout: the payment succeeded inside the modal, no page reload
+  const checkoutRef = useRef(checkout)
+  useEffect(() => {
+    checkoutRef.current = checkout
+  }, [checkout])
+  const onCheckoutComplete = useCallback(() => {
+    const c = checkoutRef.current
+    if (!c) return
+    setTimeout(() => {
+      setCheckout(null)
+      void confirmOrder(c.orderId)
+      setResult((r) => (r ? { ...r, journeys: [c.journey] } : r))
+      setSelected(c.journey.id)
+      setTimeout(() => setRide(c.journey), 1200)
+    }, 1200) // let Stripe show its success tick
+  }, [confirmOrder])
+
+  const closeCheckout = () => {
+    const c = checkout
+    setCheckout(null)
+    if (c) api.cancelOrder(c.orderId).then((o) => o.account && setAccount(o.account), () => {})
   }
 
   const endRide = () => {
@@ -159,12 +239,15 @@ export default function App() {
           <h1 className="text-[17px] font-semibold tracking-tight">
             train<span className="text-[var(--red)]">●</span>scanner
           </h1>
-          <span
-            title={`${passport.trips} trips · ${fmtKg(passport.co2SavedG)} CO₂ saved vs flying`}
-            className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[12px] text-[var(--muted)]"
-          >
-            🎟 {passport.stamps.length} · 🌱 {fmtKg(passport.co2SavedG)}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              title={`${passport.trips} trips · ${fmtKg(passport.co2SavedG)} CO₂ saved vs flying`}
+              className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[12px] text-[var(--muted)]"
+            >
+              🎟 {passport.stamps.length} · 🌱 {fmtKg(passport.co2SavedG)}
+            </span>
+            <AccountChip account={account} onChange={setAccount} />
+          </div>
         </header>
 
         <div className="mx-4 rounded-2xl border border-[var(--line)]">
@@ -233,8 +316,9 @@ export default function App() {
                   open={selected === j.id}
                   onHover={setHovered}
                   onClick={() => setSelected(selected === j.id ? null : j.id)}
-                  onBook={() => book(j)}
+                  onBook={(usePoints) => book(j, usePoints)}
                   booking={booking}
+                  account={account}
                 />
               ))}
             </ul>
@@ -252,6 +336,15 @@ export default function App() {
             <p className="mt-1 text-[14px] text-[var(--muted)]">
               Your tickets are booked. You keep {fmtKg(Math.max(0, arrived.co2_plane_g - arrived.co2_g))} of CO₂ out of the sky.
             </p>
+            {order?.status === 'paid' && order.account && (
+              <div className="mt-4 rounded-2xl bg-[var(--green-soft)] p-3 text-[var(--green)]">
+                <p className="text-2xl font-semibold tracking-tight">+{order.points_earned} ECO</p>
+                <p className="text-[12px]">
+                  {order.points_used > 0 && <>{order.points_used} points spent · </>}
+                  balance <b>{order.account.points.toLocaleString('en')}</b> points
+                </p>
+              </div>
+            )}
             <p className="mt-3 text-[13px]">
               Passport: <b>{passport.stamps.length}</b> stamps · <b>{fmtKg(passport.co2SavedG)}</b> saved
             </p>
@@ -264,6 +357,15 @@ export default function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {checkout && (
+        <CheckoutModal
+          clientSecret={checkout.clientSecret}
+          quote={checkout.quote}
+          onComplete={onCheckoutComplete}
+          onClose={closeCheckout}
+        />
       )}
     </div>
   )

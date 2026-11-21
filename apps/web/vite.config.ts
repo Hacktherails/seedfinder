@@ -7,6 +7,7 @@ export default defineConfig({
   // Single repo-root .env for API and web (only VITE_* vars reach the browser)
   envDir: '../..',
   server: {
+    allowedHosts: ['.trycloudflare.com'], // npm start -- --share
     proxy: { '/api': `http://localhost:${process.env.API_PORT ?? 8100}` },
   },
 })

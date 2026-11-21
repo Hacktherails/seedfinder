@@ -17,6 +17,7 @@ dist/
 
 # Runtime data
 apps/api/trainscanner/data/*.db
+.data/
 # Raw partner/operator data dumps — never commit
 data/raw/
 

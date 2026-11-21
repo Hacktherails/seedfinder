@@ -45,6 +45,8 @@ class Journey(BaseModel):
     operators: list[str]
     tags: list[str]  # cheapest | fastest | greenest
     legs: list[Leg]
+    green: bool = False  # eligible to earn and spend ECO points
+    eco_points: int = 0  # ECO points this ticket earns
 
 
 class JourneySearch(BaseModel):
@@ -64,10 +66,66 @@ class Network(BaseModel):
     corridors: list[Corridor]
 
 
+class PublicConfig(BaseModel):
+    stripe_publishable_key: str | None = None
+
+
+class EcoProgram(BaseModel):
+    point_value_cents: int
+    grams_per_point: int
+    commission_rate: float
+    reward_budget_share: float
+    max_discount_share: float
+    min_redeem_points: int
+    green_max_co2_ratio: float
+    min_flight_km: int
+
+
+class Account(BaseModel):
+    id: str  # demo bearer token: no password, whoever holds the id owns the points
+    email: str
+    points: int
+    co2_saved_g: int
+    trips: int
+
+
+class SignInRequest(BaseModel):
+    email: str
+
+
+class Quote(BaseModel):
+    journey_id: str
+    subtotal_cents: int
+    discount_cents: int
+    total_cents: int
+    currency: str = "EUR"
+    points_used: int
+    points_earned: int
+    max_points: int  # most points this order could use
+    balance: int  # account balance before this order
+
+
 class CheckoutRequest(BaseModel):
     journey_id: str
+    account_id: str | None = None
+    use_points: bool = False
+    embedded: bool = True  # Stripe Embedded Checkout inside the app; False = redirect to the hosted page
 
 
 class CheckoutResponse(BaseModel):
-    url: str
+    order_id: str
+    url: str | None = None  # hosted Checkout page, or the success URL in demo mode
+    client_secret: str | None = None  # Embedded Checkout
     demo: bool
+    quote: Quote
+
+
+class Order(BaseModel):
+    id: str
+    journey_id: str
+    status: str  # pending | paid | cancelled
+    points_used: int
+    points_earned: int
+    total_cents: int
+    co2_saved_g: int
+    account: Account | None = None

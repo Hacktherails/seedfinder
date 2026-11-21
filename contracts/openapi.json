@@ -37,6 +37,133 @@
         }
       }
     },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Public Config",
+        "description": "Browser-safe settings, so one Docker image works whatever keys the host injects.",
+        "operationId": "public_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account": {
+      "post": {
+        "tags": [
+          "eco"
+        ],
+        "summary": "Sign In",
+        "description": "Demo sign-in: email only, creates the account on first use (with the welcome bonus).",
+        "operationId": "sign_in_api_account_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/{account_id}": {
+      "get": {
+        "tags": [
+          "eco"
+        ],
+        "summary": "Get Account",
+        "operationId": "get_account_api_account__account_id__get",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/eco/program": {
+      "get": {
+        "tags": [
+          "eco"
+        ],
+        "summary": "Program",
+        "operationId": "program_api_eco_program_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EcoProgram"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stations": {
       "get": {
         "tags": [
@@ -174,6 +301,74 @@
         }
       }
     },
+    "/api/checkout/quote": {
+      "get": {
+        "tags": [
+          "checkout"
+        ],
+        "summary": "Quote",
+        "operationId": "quote_api_checkout_quote_get",
+        "parameters": [
+          {
+            "name": "journey_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Journey Id"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "use_points",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Use Points"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/checkout": {
       "post": {
         "tags": [
@@ -198,6 +393,92 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CheckoutResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{order_id}/confirm": {
+      "post": {
+        "tags": [
+          "checkout"
+        ],
+        "summary": "Confirm",
+        "description": "Called when the traveller comes back from Checkout. Never trusts the browser: asks Stripe.",
+        "operationId": "confirm_api_orders__order_id__confirm_post",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{order_id}/cancel": {
+      "post": {
+        "tags": [
+          "checkout"
+        ],
+        "summary": "Cancel",
+        "description": "Traveller closed Checkout: expire the session so it cannot be paid, then release held points.",
+        "operationId": "cancel_api_orders__order_id__cancel_post",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
                 }
               }
             }
@@ -243,11 +524,65 @@
   },
   "components": {
     "schemas": {
+      "Account": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "points": {
+            "type": "integer",
+            "title": "Points"
+          },
+          "co2_saved_g": {
+            "type": "integer",
+            "title": "Co2 Saved G"
+          },
+          "trips": {
+            "type": "integer",
+            "title": "Trips"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "points",
+          "co2_saved_g",
+          "trips"
+        ],
+        "title": "Account"
+      },
       "CheckoutRequest": {
         "properties": {
           "journey_id": {
             "type": "string",
             "title": "Journey Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "use_points": {
+            "type": "boolean",
+            "title": "Use Points",
+            "default": false
+          },
+          "embedded": {
+            "type": "boolean",
+            "title": "Embedded",
+            "default": true
           }
         },
         "type": "object",
@@ -258,19 +593,45 @@
       },
       "CheckoutResponse": {
         "properties": {
-          "url": {
+          "order_id": {
             "type": "string",
+            "title": "Order Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Url"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Secret"
           },
           "demo": {
             "type": "boolean",
             "title": "Demo"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/Quote"
           }
         },
         "type": "object",
         "required": [
-          "url",
-          "demo"
+          "order_id",
+          "demo",
+          "quote"
         ],
         "title": "CheckoutResponse"
       },
@@ -302,6 +663,54 @@
           "path"
         ],
         "title": "Corridor"
+      },
+      "EcoProgram": {
+        "properties": {
+          "point_value_cents": {
+            "type": "integer",
+            "title": "Point Value Cents"
+          },
+          "grams_per_point": {
+            "type": "integer",
+            "title": "Grams Per Point"
+          },
+          "commission_rate": {
+            "type": "number",
+            "title": "Commission Rate"
+          },
+          "reward_budget_share": {
+            "type": "number",
+            "title": "Reward Budget Share"
+          },
+          "max_discount_share": {
+            "type": "number",
+            "title": "Max Discount Share"
+          },
+          "min_redeem_points": {
+            "type": "integer",
+            "title": "Min Redeem Points"
+          },
+          "green_max_co2_ratio": {
+            "type": "number",
+            "title": "Green Max Co2 Ratio"
+          },
+          "min_flight_km": {
+            "type": "integer",
+            "title": "Min Flight Km"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point_value_cents",
+          "grams_per_point",
+          "commission_rate",
+          "reward_budget_share",
+          "max_discount_share",
+          "min_redeem_points",
+          "green_max_co2_ratio",
+          "min_flight_km"
+        ],
+        "title": "EcoProgram"
       },
       "HTTPValidationError": {
         "properties": {
@@ -375,6 +784,16 @@
             },
             "type": "array",
             "title": "Legs"
+          },
+          "green": {
+            "type": "boolean",
+            "title": "Green",
+            "default": false
+          },
+          "eco_points": {
+            "type": "integer",
+            "title": "Eco Points",
+            "default": 0
           }
         },
         "type": "object",
@@ -516,6 +935,142 @@
           "corridors"
         ],
         "title": "Network"
+      },
+      "Order": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "journey_id": {
+            "type": "string",
+            "title": "Journey Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "points_used": {
+            "type": "integer",
+            "title": "Points Used"
+          },
+          "points_earned": {
+            "type": "integer",
+            "title": "Points Earned"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "co2_saved_g": {
+            "type": "integer",
+            "title": "Co2 Saved G"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "journey_id",
+          "status",
+          "points_used",
+          "points_earned",
+          "total_cents",
+          "co2_saved_g"
+        ],
+        "title": "Order"
+      },
+      "PublicConfig": {
+        "properties": {
+          "stripe_publishable_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stripe Publishable Key"
+          }
+        },
+        "type": "object",
+        "title": "PublicConfig"
+      },
+      "Quote": {
+        "properties": {
+          "journey_id": {
+            "type": "string",
+            "title": "Journey Id"
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "title": "Subtotal Cents"
+          },
+          "discount_cents": {
+            "type": "integer",
+            "title": "Discount Cents"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "points_used": {
+            "type": "integer",
+            "title": "Points Used"
+          },
+          "points_earned": {
+            "type": "integer",
+            "title": "Points Earned"
+          },
+          "max_points": {
+            "type": "integer",
+            "title": "Max Points"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "journey_id",
+          "subtotal_cents",
+          "discount_cents",
+          "total_cents",
+          "points_used",
+          "points_earned",
+          "max_points",
+          "balance"
+        ],
+        "title": "Quote"
+      },
+      "SignInRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "SignInRequest"
       },
       "Station": {
         "properties": {

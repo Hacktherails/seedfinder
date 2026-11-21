@@ -1,4 +1,16 @@
-import type { CheckoutResponse, Health, JourneySearch, Network, Station } from './types'
+import type {
+  Account,
+  CheckoutRequest,
+  CheckoutResponse,
+  EcoProgram,
+  Health,
+  JourneySearch,
+  Network,
+  Order,
+  PublicConfig,
+  Quote,
+  Station,
+} from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
@@ -10,17 +22,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const qs = (params: Record<string, string>) => new URLSearchParams(params).toString()
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
 
 export const api = {
   health: () => request<Health>('/api/health'),
+  config: () => request<PublicConfig>('/api/config'),
   network: () => request<Network>('/api/network'),
   stations: (q: string, signal?: AbortSignal) => request<Station[]>(`/api/stations?${qs({ q })}`, { signal }),
   journeys: (from: string, to: string, date: string, signal?: AbortSignal) =>
     request<JourneySearch>(`/api/journeys?${qs({ from, to, date })}`, { signal }),
-  checkout: (journey_id: string) =>
-    request<CheckoutResponse>('/api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ journey_id }),
-    }),
+  signIn: (email: string) => post<Account>('/api/account', { email }),
+  account: (id: string) => request<Account>(`/api/account/${encodeURIComponent(id)}`),
+  ecoProgram: () => request<EcoProgram>('/api/eco/program'),
+  quote: (journey_id: string, account_id: string | null, use_points: boolean, signal?: AbortSignal) =>
+    request<Quote>(
+      `/api/checkout/quote?${qs({ journey_id, use_points: String(use_points), ...(account_id ? { account_id } : {}) })}`,
+      { signal },
+    ),
+  checkout: (body: CheckoutRequest) => post<CheckoutResponse>('/api/checkout', body),
+  confirmOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/confirm`),
+  cancelOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/cancel`),
 }
