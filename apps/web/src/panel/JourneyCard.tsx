@@ -67,7 +67,7 @@ export default function JourneyCard({ j, maxDuration, active, open, onHover, onC
             {j.eco_points > 0 && (
               <div
                 className="mt-0.5 flex items-center justify-end gap-1 text-[13px] font-medium text-[var(--green)]"
-                title={`${j.eco_points} ECO points earned with this booking`}
+                title={`${j.eco_points} EcoTokens earned with this booking`}
               >
                 +{j.eco_points}
                 <CoinIcon />

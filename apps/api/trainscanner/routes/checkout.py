@@ -166,7 +166,7 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
                 currency=q.currency.lower(),
                 duration="once",
                 max_redemptions=1,
-                name=f"ECO points ({q.points_used} pts)"[:40],
+                name=f"EcoTokens ({q.points_used})"[:40],
                 metadata={"order_id": order_id},
             )
             params["discounts"] = [{"coupon": coupon.id}]

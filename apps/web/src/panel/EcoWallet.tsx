@@ -1,4 +1,4 @@
-// ECO wallet: floating card in the top-right corner of the map. Balance, impact, what this trip earns, how it works.
+// EcoToken wallet: floating card in the top-right corner of the map. Balance, impact, what this trip earns, how it works.
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Account, EcoProgram } from '../api/types'
@@ -45,10 +45,10 @@ export default function EcoWallet({ account, onChange, passport, earning }: Prop
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open ECO wallet"
+        aria-label="Open EcoToken wallet"
         className="fixed top-3 right-3 z-20 flex items-center gap-1.5 rounded-full bg-[var(--card)] px-3.5 py-2 text-[13px] font-medium text-[var(--green)] shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
       >
-        {account ? account.points.toLocaleString('en') : 'ECO'}
+        {account ? account.points.toLocaleString('en') : 'EcoTokens'}
         <CoinIcon />
       </button>
     )
@@ -56,17 +56,17 @@ export default function EcoWallet({ account, onChange, passport, earning }: Prop
 
   return (
     <aside
-      aria-label="ECO wallet"
+      aria-label="EcoToken wallet"
       className="pop fixed top-3 right-3 z-20 w-[300px] max-w-[calc(100vw-24px)] rounded-3xl bg-[var(--card)] p-2 text-[13px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
     >
       {/* Balance: the green block, same nesting as the itinerary (24 px outer, 16 px inner) */}
       <div className="rounded-2xl bg-[var(--green-soft)] p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase">ECO wallet</h2>
+          <h2 className="text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase">EcoToken wallet</h2>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close ECO wallet"
+            aria-label="Close EcoToken wallet"
             className="-mr-1.5 grid size-7 place-items-center rounded-full text-[var(--green)] hover:bg-[var(--card)]"
           >
             ×

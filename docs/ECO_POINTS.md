@@ -1,4 +1,4 @@
-# Points ECO
+# Points ECO (EcoTokens)
 
 Les voyageurs gagnent des points ECO quand ils achètent un billet « green ». Le nombre de points est proportionnel au CO₂ évité par rapport au même trajet en avion. Les points se dépensent ensuite comme réduction sur un futur billet green.
 
@@ -26,7 +26,7 @@ Exemple réel : Paris → Amsterdam à 66,09 €, 2,6 kg de CO₂ en train contr
 
 1. Connexion démo par e-mail seulement (`POST /api/account`). Le compte est créé à la première connexion et l'id sert de jeton. C'est la partie qu'on simplifie pour la démo.
 2. Les résultats affichent `green` et `eco_points`. Le devis `GET /api/checkout/quote` calcule la réduction côté serveur.
-3. `POST /api/checkout` bloque les points utilisés, crée un coupon Stripe unique (« ECO points (N pts) ») et ouvre un Embedded Checkout dans l'app. La page hébergée sert de repli si `VITE_STRIPE_PUBLISHABLE_KEY` est absente.
+3. `POST /api/checkout` bloque les points utilisés, crée un coupon Stripe unique (« EcoTokens (N) ») et ouvre un Embedded Checkout dans l'app. La page hébergée sert de repli si `VITE_STRIPE_PUBLISHABLE_KEY` est absente.
 4. Paiement : le webhook `checkout.session.completed` ou `POST /api/orders/{id}/confirm` (qui interroge Stripe) crédite les points gagnés, une seule fois.
 5. Abandon : fermer la fenêtre de paiement ou le webhook `checkout.session.expired` (session de 31 min) rend les points bloqués.
 

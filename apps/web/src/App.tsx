@@ -49,7 +49,18 @@ interface PlannerSeed {
   fromName: string
   toName: string
   date: string
+  via?: string[] // stopovers, one night each (stays offered)
 }
+
+// "Zurich hb" finds "Zürich HB": accents and case never block the landing page hand-off.
+const norm = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+const findHub = (hubs: Station[], name: string) =>
+  hubs.find((h) => norm(h.name) === norm(name)) ?? hubs.find((h) => norm(h.name).includes(norm(name))) ?? null
 
 interface PlannerPageProps {
   seed: PlannerSeed | null
@@ -131,15 +142,22 @@ function PlannerPage({ seed }: PlannerPageProps) {
   // Prefill the planner when entering it from the landing quick planner.
   useEffect(() => {
     if (!network || !seed || seeded.current) return
-    const byName = (name: string) =>
-      network.hubs.find((h) => h.name.toLowerCase() === name.trim().toLowerCase()) ?? null
-    const from = byName(seed.fromName)
-    const to = byName(seed.toName)
-    if (!from || !to) return
+    seeded.current = true
+    const from = findHub(network.hubs, seed.fromName)
+    const to = findHub(network.hubs, seed.toName)
+    if (!from || !to) {
+      setError(`Unknown station: ${!from ? seed.fromName : seed.toName}. Pick one on the map.`)
+      return
+    }
     dispatch({ type: 'setDepartDate', date: seed.date })
     dispatch({ type: 'pick', station: from })
     dispatch({ type: 'pick', station: to })
-    seeded.current = true
+    ;(seed.via ?? []).forEach((name, i) => {
+      const station = findHub(network.hubs, name)
+      if (!station) return
+      dispatch({ type: 'insertStop', index: i + 1, station })
+      dispatch({ type: 'setNights', index: i + 1, nights: 1 })
+    })
   }, [network, seed])
 
   useEffect(() => {
@@ -647,10 +665,10 @@ function PlannerPage({ seed }: PlannerPageProps) {
             </p>
             {order?.status === 'paid' && order.account && (
               <div className="mt-4 rounded-2xl bg-[var(--green-soft)] p-3 text-[var(--green)]">
-                <p className="text-2xl font-semibold tracking-tight">+{order.points_earned} ECO</p>
+                <p className="text-2xl font-semibold tracking-tight">+{order.points_earned} EcoTokens</p>
                 <p className="text-[12px]">
-                  {order.points_used > 0 && <>{order.points_used} points spent · </>}
-                  balance <b>{order.account.points.toLocaleString('en')}</b> points
+                  {order.points_used > 0 && <>{order.points_used} EcoTokens spent · </>}
+                  balance <b>{order.account.points.toLocaleString('en')}</b> EcoTokens
                 </p>
               </div>
             )}
@@ -697,7 +715,7 @@ function EcoRow({
   if (!signedIn)
     return earnable > 0 ? (
       <p className="mb-2 rounded-xl bg-[var(--green-soft)] px-3 py-2 text-[12px] text-[var(--green)]">
-        🌿 Sign in to earn <b>+{earnable} ECO points</b> on this trip and spend them on your next green ticket.
+        🌿 Sign in to earn <b>+{earnable} EcoTokens</b> on this trip and spend them on your next green ticket.
       </p>
     ) : null
   if (!q.points_earned && !q.max_points) return null
@@ -706,7 +724,7 @@ function EcoRow({
       {q.max_points > 0 && (
         <label className="flex cursor-pointer items-center justify-between gap-3 text-[13px]">
           <span>
-            Use <b>{usePoints ? q.points_used : q.max_points}</b> of your {q.balance} ECO points
+            Use <b>{usePoints ? q.points_used : q.max_points}</b> of your {q.balance} EcoTokens
             {usePoints && q.discount_cents > 0 && <b> · −{fmtPrice(q.discount_cents, q.currency)}</b>}
           </span>
           <input
@@ -717,7 +735,7 @@ function EcoRow({
           />
         </label>
       )}
-      {q.points_earned > 0 && <p className={q.max_points > 0 ? 'mt-1' : ''}>🌿 You earn +{q.points_earned} ECO points with this trip</p>}
+      {q.points_earned > 0 && <p className={q.max_points > 0 ? 'mt-1' : ''}>🌿 You earn +{q.points_earned} EcoTokens with this trip</p>}
     </div>
   )
 }
@@ -735,28 +753,29 @@ interface CuratedTrip {
   image: string
 }
 
+// Hub names only (network.json) and segments kept in the offline demo cache (scripts/warm_cache.py).
 const CURATED_HOME_TRIPS: CuratedTrip[] = [
   {
     id: 1,
-    title: "L'Axe Imperial d'Europe Centrale",
-    stops: ['Bruxelles-Midi', 'Berlin Hbf', 'Praha hl.n.', 'Wien Hbf'],
-    days: 7,
+    title: "L'axe impérial d'Europe centrale",
+    stops: ['Bruxelles-Midi', 'Köln Hbf', 'Berlin Hbf', 'Praha hlavní nádraží'],
+    days: 4,
     priceFrom: 145,
     image: 'https://images.unsplash.com/photo-1541849546-216549ae216d?auto=format&fit=crop&w=1200&q=80',
   },
   {
     id: 2,
-    title: 'Traversee Alpine du Saint-Gothard',
-    stops: ['Paris Nord', 'Zurich HB', 'Milano Centrale'],
-    days: 4,
+    title: 'La traversée des Alpes',
+    stops: ['Paris Gare de Lyon', 'Zürich HB', 'Milano Centrale'],
+    days: 3,
     priceFrom: 129,
     image: 'https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&w=1200&q=80',
   },
   {
     id: 3,
-    title: 'Cap vers les Capitales Nordiques',
-    stops: ['Amsterdam Centraal', 'Kobenhavn H', 'Stockholm Central'],
-    days: 6,
+    title: 'Cap sur la Scandinavie',
+    stops: ['Amsterdam Centraal', 'Hamburg Hbf', 'København H'],
+    days: 3,
     priceFrom: 168,
     image: 'https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=1200&q=80',
   },
@@ -767,14 +786,14 @@ const HOME_STATIONS = [
   'Paris Nord',
   'Amsterdam Centraal',
   'Berlin Hbf',
-  'Zurich HB',
-  'Praha hl.n.',
+  'Köln Hbf',
+  'Zürich HB',
+  'Praha hlavní nádraží',
   'Wien Hbf',
   'Milano Centrale',
-  'Kobenhavn H',
-  'Stockholm Central',
+  'København H',
   'London St Pancras',
-  'Munchen Hbf',
+  'München Hbf',
 ]
 
 function LandingPage({ onPlan }: LandingProps) {
@@ -819,17 +838,17 @@ function LandingPage({ onPlan }: LandingProps) {
             Europe Rail Planner
           </p>
           <h1 className="mt-5 max-w-3xl text-4xl leading-tight font-semibold tracking-tight sm:text-6xl">
-            Trace ton itineraire ferroviaire en Europe.
+            Trace ton itinéraire ferroviaire en Europe.
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--muted)] sm:text-lg">
-            Recherche multi-opérateurs, comparaison prix/temps/CO₂, puis réservation en un paiement. Une expérience claire de l'idée au billet.
+            Tous les opérateurs comparés, l'impact CO₂ face à l'avion sur chaque trajet, et un seul paiement pour tout le voyage. Le train devient l'option évidente, et il te rapporte des points.
           </p>
 
           <form onSubmit={submitQuickPlan} className="mt-8 rounded-2xl border border-[var(--line)] bg-white/80 p-4 backdrop-blur-sm sm:p-5">
             <p className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--muted)]">Planificateur rapide</p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <label className="text-xs text-[var(--muted)]">
-                Depart
+                Départ
                 <input
                   list="home-stations"
                   value={fromName}
@@ -839,7 +858,7 @@ function LandingPage({ onPlan }: LandingProps) {
                 />
               </label>
               <label className="text-xs text-[var(--muted)]">
-                Arrivee
+                Arrivée
                 <input
                   list="home-stations"
                   value={toName}
@@ -872,7 +891,7 @@ function LandingPage({ onPlan }: LandingProps) {
                 <option key={station} value={station} />
               ))}
             </datalist>
-            <p className="mt-3 text-sm text-[var(--muted)]">Compatible mobile et desktop, carte live incluse.</p>
+            <p className="mt-3 text-sm text-[var(--muted)]">Mobile et desktop, carte en direct incluse.</p>
           </form>
         </section>
 
@@ -880,31 +899,39 @@ function LandingPage({ onPlan }: LandingProps) {
           <div className="grid grid-cols-1 items-stretch md:grid-cols-[1.1fr_0.9fr]">
             <div className="p-6 sm:p-8">
               <p className="inline-flex items-center rounded-full border border-[var(--line)] bg-[var(--hover)] px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--muted)]">
-                Programme fidelite climat
+                Programme fidélité climat
               </p>
-              <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Gagne des EcoTokens a chaque billet responsable.</h2>
+              <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Le train te rapporte, l'avion non.</h2>
               <p className="mt-3 text-sm leading-relaxed text-[var(--muted)] sm:text-base">
-                A chaque trajet ferroviaire reserve avec une faible empreinte CO₂, tu cumules des EcoTokens. Plus ton itineraire est vert,
-                plus tu gagnes de tokens a utiliser ensuite pour des avantages exclusifs, des badges de profil et des reductions sur tes prochains trajets.
+                Chaque billet vert te crédite des EcoTokens en proportion du CO₂ que tu évites en ne prenant pas l'avion. Tu les dépenses
+                comme réduction sur ton prochain billet vert, directement dans le paiement Stripe.
               </p>
-
               <ul className="mt-5 space-y-2 text-sm text-[var(--ink)]">
                 <li className="flex items-start gap-2">
                   <Leaf className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
-                  <span>Bonus EcoToken sur les trajets identifies comme les plus ecologiques.</span>
+                  <span>
+                    <b>1 EcoToken par kg de CO₂ évité.</b> Bruxelles → Berlin en train : environ 170 tokens.
+                  </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
-                  <span>Progression visible dans ton passeport voyageur et recompenses cumulatives.</span>
+                  <span>
+                    <b>100 EcoTokens = 1 € de réduction</b>, jusqu'à 30 % d'un billet vert. 100 tokens offerts à l'inscription.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                  <span>
+                    <b>Financé par notre commission</b>, pas par une hausse de prix : chaque billet reste rentable.
+                  </span>
                 </li>
               </ul>
-
               <button
                 type="button"
                 onClick={() => onPlan()}
                 className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ink)] px-5 text-sm font-medium text-[var(--card)] transition hover:opacity-90"
               >
-                Commencer a gagner des EcoTokens
+                Commencer à gagner des EcoTokens
                 <ArrowRight className="size-4" />
               </button>
             </div>
@@ -943,23 +970,23 @@ function LandingPage({ onPlan }: LandingProps) {
               <ShieldCheck className="size-4" />
               <span className="text-xs font-medium uppercase tracking-wide">Confiance</span>
             </div>
-            <h2 className="text-sm font-semibold">Checkout unifié</h2>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Passe de la comparaison à la réservation avec suivi CO₂ et paiement Stripe.</p>
+            <h2 className="text-sm font-semibold">Un seul paiement</h2>
+            <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Tous les billets et nuitées du voyage réglés en une fois avec Stripe, EcoTokens déduits.</p>
           </article>
         </section>
 
         <section className="mt-12">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight">Itineraires suggeres</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">Inspiration rapide avant de passer sur le planner complet.</p>
+              <h2 className="text-2xl font-semibold tracking-tight">Itinéraires suggérés</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">Un clic pour charger toutes les étapes dans le planificateur, nuits sur place comprises.</p>
             </div>
             <button
               type="button"
               onClick={() => onPlan()}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm font-medium text-[var(--ink)] transition hover:bg-[var(--hover)]"
             >
-              Voir le planner
+              Ouvrir le planificateur
               <ArrowRight className="size-4" />
             </button>
           </div>
@@ -981,7 +1008,7 @@ function LandingPage({ onPlan }: LandingProps) {
                   </div>
 
                   <h3 className="text-base font-semibold leading-snug">{trip.title}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{trip.stops.join(' -> ')}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{trip.stops.join(' → ')}</p>
 
                   <div className="mt-4 flex items-center justify-between">
                     <div>
@@ -990,7 +1017,14 @@ function LandingPage({ onPlan }: LandingProps) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => onPlan()}
+                      onClick={() =>
+                        onPlan({
+                          fromName: trip.stops[0],
+                          toName: trip.stops.at(-1)!,
+                          via: trip.stops.slice(1, -1),
+                          date: tomorrow(),
+                        })
+                      }
                       className="inline-flex h-9 items-center gap-1 rounded-lg bg-[var(--ink)] px-3 text-xs font-medium text-[var(--card)] transition hover:opacity-90"
                     >
                       Planifier
@@ -1007,7 +1041,7 @@ function LandingPage({ onPlan }: LandingProps) {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium">Prêt à composer un trajet multi-étapes ?</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">Passe sur la page planificateur existante pour accéder à la carte et au checkout.</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Ajoute des étapes sur la carte, choisis tes trains et paie tout en une fois.</p>
             </div>
             <button
               type="button"

@@ -19,7 +19,7 @@ export default function CheckoutModal({ clientSecret, quote, onComplete, onClose
             <span className="font-medium">Secure payment</span>
             {quote.points_used > 0 && (
               <span className="ml-2 rounded-full bg-[var(--green-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--green)]">
-                🌿 −{fmtPrice(quote.discount_cents, quote.currency)} with {quote.points_used} ECO
+                🌿 −{fmtPrice(quote.discount_cents, quote.currency)} with {quote.points_used} EcoTokens
               </span>
             )}
           </div>

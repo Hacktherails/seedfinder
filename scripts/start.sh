@@ -4,6 +4,7 @@
 #   npm start                 # install if needed, ask for Stripe test keys once, run API + web (+ webhooks)
 #   npm start -- --share      # same, plus a public https URL (Cloudflare Quick Tunnel, no account needed)
 #   npm start -- --reset      # wipe the ECO points ledger first (fresh demo)
+#   npm start -- --offline    # no WiFi needed: journeys replayed from the committed demo cache
 #   npm start -- --prod       # build and run the production Docker image (what gets deployed)
 #
 # Env: API_PORT (default 8100), WEB_PORT (default 5173), STRIPE_LISTEN=0 to skip webhook forwarding.
@@ -14,13 +15,14 @@ cd "$ROOT"
 export PATH="$PATH:$HOME/.stripe/bin:$HOME/.local/bin"
 export API_PORT="${API_PORT:-8100}"
 WEB_PORT="${WEB_PORT:-5173}"
-SHARE=0 RESET=0 PROD=0
+SHARE=0 RESET=0 PROD=0 OFFLINE=0
 for arg in "$@"; do
   case "$arg" in
     --share) SHARE=1 ;;
     --reset) RESET=1 ;;
     --prod) PROD=1 ;;
-    -h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --offline) OFFLINE=1 ;;
+    -h | --help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -93,6 +95,12 @@ ok "web dependencies"
 ok "api dependencies"
 
 [[ $RESET == 1 ]] && { rm -rf .data; ok "ECO ledger reset"; }
+if [[ $OFFLINE == 1 ]]; then
+  # Env beats .env for both pydantic-settings and Vite. Stripe is unreachable too: demo payments
+  # (order confirmed at once, ECO points still earned and spent).
+  export OFFLINE_DEMO=true STRIPE_LISTEN=0 STRIPE_SECRET_KEY= VITE_STRIPE_PUBLISHABLE_KEY=
+  ok "offline demo: journeys from the demo cache, payments in demo mode (refresh cache online: npm run warm:cache)"
+fi
 
 # ── 4. Run ──────────────────────────────────────────────────────────────────
 port_busy "$API_PORT" && die "port $API_PORT already in use (another 'npm run dev:api'?). Stop it or set API_PORT=…"
@@ -148,6 +156,6 @@ printf '\n%s  Train Scanner is running%s\n' "$bold" "$reset"
 printf '  App       %shttp://localhost:%s%s\n' "$green" "$WEB_PORT" "$reset"
 printf '  API docs  http://localhost:%s/docs\n' "$API_PORT"
 [[ -n "${PUBLIC_URL:-}" ]] && printf '  Public    %s%s%s  (anyone with the link, until Ctrl-C)\n' "$green" "$PUBLIC_URL" "$reset"
-[[ "$(get_env STRIPE_SECRET_KEY)" == sk_test_* ]] && printf '  Test card 4242 4242 4242 4242 · any future date · any CVC\n'
+[[ $OFFLINE == 0 && "$(get_env STRIPE_SECRET_KEY)" == sk_test_* ]] && printf '  Test card 4242 4242 4242 4242 · any future date · any CVC\n'
 printf '  Ctrl-C to stop\n\n'
 wait -n "${PIDS[@]}" || true

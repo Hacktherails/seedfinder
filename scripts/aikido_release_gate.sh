@@ -6,8 +6,12 @@
 # Needs AIKIDO_API_KEY in .env (token from app.aikido.dev → Settings → Integrations → Local scan,
 # shown only once). Uses the official Docker image by default; set AIKIDO_LOCAL_SCANNER_BIN to use
 # a downloaded binary instead. AIKIDO_FAIL_ON = low|medium|high|critical (default: high).
+# CI (.github/workflows/ci.yml) runs it on every push to main (release gating) and on every PR
+# (PR gating: only NEW issues introduced by the branch fail; set AIKIDO_BASE_COMMIT + AIKIDO_HEAD_COMMIT).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Pinned by digest (supply chain): bump with `docker pull aikidosecurity/local-scanner` + `docker image inspect`.
+IMAGE="aikidosecurity/local-scanner@sha256:181f14edc6de510ddf110c0f49f82626c1833a77191be98e7182a4e620466b68"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
 mkdir -p reports
 rm -f reports/aikido_gate.json reports/aikido_local.txt
@@ -32,12 +36,15 @@ else
   args=(scan --apikey "$AIKIDO_API_KEY" --repositoryname train-scanner --branchname "${AIKIDO_BRANCH:-main}"
         --fail-on "${AIKIDO_FAIL_ON:-high}" --no-snippets
         --exclude node_modules --exclude apps/api/.venv --exclude apps/web/dist
-        --exclude .env --exclude reports)
+        --exclude .env --exclude .data --exclude reports)
+  if [[ -n "${AIKIDO_BASE_COMMIT:-}" ]]; then
+    args+=(--gating-mode pr --base-commit-id "$AIKIDO_BASE_COMMIT" --head-commit-id "${AIKIDO_HEAD_COMMIT:?}")
+  fi
   if [[ -n "${AIKIDO_LOCAL_SCANNER_BIN:-}" ]]; then
     "$AIKIDO_LOCAL_SCANNER_BIN" "${args[@]}" --gating-result-output reports/aikido_gate.json \
       --tmpdirectory "${TMPDIR:-/tmp}/aikidotmp" . 2>&1 | tee reports/aikido_local.txt || status=1
   else
-    docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -v "$PWD/reports:/reports" aikidosecurity/local-scanner \
+    docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -v "$PWD/reports:/reports" "${AIKIDO_IMAGE:-$IMAGE}" \
       "${args[@]}" --gating-result-output /reports/aikido_gate.json --tmpdirectory /tmp/aikidotmp /repo \
       2>&1 | tee reports/aikido_local.txt || status=1
   fi

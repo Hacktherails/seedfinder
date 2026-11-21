@@ -30,3 +30,30 @@ jobs:
       - run: npm ci
       - run: npm run lint -w apps/web
       - run: npm run build -w apps/web
+
+  aikido:
+    # Security gate (SAST, dependencies, secrets, IaC, licences) with the Aikido Local Scanner.
+    # Code stays on the runner (--no-snippets). Needs the repo secret AIKIDO_API_KEY.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aikido gate
+        env:
+          AIKIDO_API_KEY: ${{ secrets.AIKIDO_API_KEY }}
+          AIKIDO_FAIL_ON: high
+          AIKIDO_BRANCH: ${{ github.head_ref || 'main' }}
+          AIKIDO_BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+          AIKIDO_HEAD_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -z "$AIKIDO_API_KEY" ]; then
+            echo "::warning::AIKIDO_API_KEY secret not set: Aikido gate skipped (gh secret set AIKIDO_API_KEY)"
+            exit 0
+          fi
+          scripts/aikido_release_gate.sh
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aikido-report
+          path: reports/
+          if-no-files-found: ignore
