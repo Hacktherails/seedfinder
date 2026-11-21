@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api } from './api/client'
-import type { Basket, Journey, JourneySearch, Network, Station } from './api/types'
+import type { Basket, Journey, JourneySearch, LngLat, Network, Station } from './api/types'
 import { fmtKg, fmtPrice } from './format'
 import { greatCircle, journeyPath } from './map/geo'
 import TrainMap from './map/TrainMap'
@@ -36,26 +36,6 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matc
 const dayLabel = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 
-/** One synthetic journey for the whole trip, so the ride plays every segment in a row. */
-function combine(js: Journey[]): Journey {
-  const first = js[0]
-  const sum = (f: (j: Journey) => number) => js.reduce((a, j) => a + f(j), 0)
-  return {
-    id: 'trip',
-    departure: first.departure,
-    arrival: js[js.length - 1].arrival,
-    duration_s: sum((j) => j.duration_s),
-    transfers: sum((j) => j.transfers),
-    price_cents: sum((j) => j.price_cents),
-    currency: first.currency,
-    co2_g: sum((j) => j.co2_g),
-    co2_plane_g: sum((j) => j.co2_plane_g),
-    operators: [...new Set(js.flatMap((j) => j.operators))],
-    tags: [],
-    legs: js.flatMap((j) => j.legs),
-  }
-}
-
 type LoaderStatus = 'idle' | 'loading' | 'done' | 'error'
 
 export default function App() {
@@ -75,11 +55,12 @@ export default function App() {
   const [basket, setBasket] = useState<{ key: string; data: Basket } | null>(null)
   const [basketError, setBasketError] = useState<string | null>(null)
   const [booking, setBooking] = useState(false)
-  const [ride, setRide] = useState<Journey | null>(null)
-  const [arrived, setArrived] = useState<Journey | null>(null)
+  const [checkoutRun, setCheckoutRun] = useState<{ stops: LngLat[]; onDone: () => void } | null>(null)
+  const [arrived, setArrived] = useState<{ city: string; savedG: number } | null>(null)
   const [passport, setPassport] = useState<Passport>(() => load('passport', { stamps: [], co2SavedG: 0, trips: 0 }))
   const [isPhone, setIsPhone] = useState(() => !window.matchMedia('(min-width: 768px)').matches)
-  const rideCities = useRef<string[]>([])
+  const runDone = useRef(false)
+  const checkoutUrl = useRef<string | null>(null)
 
   useEffect(() => {
     api.network().then(setNetwork, () => {})
@@ -92,7 +73,7 @@ export default function App() {
     return () => mq.removeEventListener('change', on)
   }, [])
 
-  // Back from Stripe: replay the booked trip as one ride, then stamp the passport
+  // Back from Stripe: stamp the passport and say bon voyage
   useEffect(() => {
     const paid = new URLSearchParams(location.search).get('paid')
     const pending = load<{ searches: JourneySearch[]; ids: string[] } | null>('pending', null, 'session')
@@ -100,9 +81,18 @@ export default function App() {
     history.replaceState(null, '', '/')
     const js = pending.ids.map((id) => pending.searches.flatMap((s) => s.journeys).find((j) => j.id === id))
     if (js.some((j) => !j)) return
-    rideCities.current = pending.searches.flatMap((s) => [s.origin.name, s.destination.name])
-    // No cleanup: StrictMode re-runs this effect after ?paid is already stripped, so a cleared timer would never ride.
-    setTimeout(() => setRide(combine(js as Journey[])), 1800)
+    const savedG = (js as Journey[]).reduce((a, j) => a + Math.max(0, j.co2_plane_g - j.co2_g), 0)
+    const next: Passport = {
+      stamps: [...new Set([...passport.stamps, ...pending.searches.flatMap((s) => [s.origin.name, s.destination.name])])],
+      co2SavedG: passport.co2SavedG + savedG,
+      trips: passport.trips + 1,
+    }
+    setPassport(next)
+    save('passport', next)
+    const s = pending.searches
+    // Final destination: last segment, or the one before it when the last is the return to the origin.
+    const isReturn = s.length > 1 && s.at(-1)!.destination.name === s[0].origin.name
+    setArrived({ city: s.at(isReturn ? -2 : -1)!.destination.name, savedG })
   }, [])
 
   const plans = segmentPlans(trip)
@@ -201,31 +191,39 @@ export default function App() {
     if (next >= 0) setActiveSeg(next)
   }
 
-  const book = async () => {
+  const book = () => {
+    const picked = basketKey.split(',')
+    const stops: LngLat[] = trip.stops.map((s) => [s.station.lon, s.station.lat])
+    if (trip.returnDate) stops.push(stops[0])
     setBooking(true)
-    try {
-      const picked = basketKey.split(',')
-      save('pending', { searches, ids: picked }, 'session')
-      const { url } = await api.checkout(picked)
-      location.href = url
-    } catch (e) {
-      setBasketError((e as Error).message)
-      setBooking(false)
+    setBasketError(null)
+    save('pending', { searches, ids: picked }, 'session')
+    runDone.current = !hasWebGL
+    checkoutUrl.current = null
+    const go = () => {
+      if (runDone.current && checkoutUrl.current) location.href = checkoutUrl.current
     }
-  }
-
-  const endRide = () => {
-    const j = ride
-    setRide(null)
-    if (!j) return
-    const next: Passport = {
-      stamps: [...new Set([...passport.stamps, ...rideCities.current])],
-      co2SavedG: passport.co2SavedG + Math.max(0, j.co2_plane_g - j.co2_g),
-      trips: passport.trips + 1,
+    if (hasWebGL) {
+      setSnap('peek')
+      setCheckoutRun({
+        stops,
+        onDone: () => {
+          runDone.current = true
+          go()
+        },
+      })
     }
-    setPassport(next)
-    save('passport', next)
-    setArrived(j)
+    api.checkout(picked).then(
+      ({ url }) => {
+        checkoutUrl.current = url
+        go()
+      },
+      (e: Error) => {
+        setBasketError(e.message)
+        setCheckoutRun(null)
+        setBooking(false)
+      },
+    )
   }
 
   const tapStation = (s: Station) => {
@@ -250,9 +248,8 @@ export default function App() {
       {hasWebGL && (
         <TrainMap
           network={network}
-          journeys={ride ? [ride] : (segment?.journeys ?? [])}
+          journeys={segment?.journeys ?? []}
           activeId={hovered ?? activeSelected}
-          ride={ride}
           stations={stations}
           padding={padding}
           trip={trip}
@@ -264,11 +261,11 @@ export default function App() {
           onHover={setHovered}
           onSelect={(id) => choose(activeSeg, id)}
           onStationClick={tapStation}
-          onRideEnd={endRide}
+          checkoutRun={checkoutRun}
         />
       )}
 
-      <Sheet snap={snap} onSnapChange={setSnap} label="Trip planner" hidden={!!ride}>
+      <Sheet snap={snap} onSnapChange={setSnap} label="Trip planner">
         <header className="flex items-center justify-between px-5 pt-5 pb-3">
           <h1 className="text-[17px] font-semibold tracking-tight">
             train<span className="text-[var(--red)]">●</span>scanner
@@ -394,7 +391,7 @@ export default function App() {
                     onClick={book}
                     className="rounded-xl bg-[var(--ink)] px-5 py-3 text-[15px] font-medium text-[var(--card)] disabled:opacity-40"
                   >
-                    {plans.length > 1 ? 'Book trip' : 'Book all tickets'}
+                    {booking ? 'Opening checkout…' : plans.length > 1 ? 'Book trip' : 'Book all tickets'}
                   </button>
                 </div>
               </footer>
@@ -407,11 +404,11 @@ export default function App() {
         <div className="absolute inset-0 grid place-items-center bg-black/20 backdrop-blur-[2px]">
           <div className="pop w-[340px] rounded-3xl bg-[var(--card)] p-6 text-center shadow-2xl">
             <div className="mx-auto grid size-20 rotate-[-8deg] place-items-center rounded-full border-2 border-dashed border-[var(--red)] text-[11px] font-semibold tracking-widest text-[var(--red)] uppercase">
-              {arrived.legs[arrived.legs.length - 1].destination.name.split(/[ -]/)[0]}
+              {arrived.city.split(/[ -]/)[0]}
             </div>
             <h2 className="mt-4 text-xl font-semibold tracking-tight">Bon voyage!</h2>
             <p className="mt-1 text-[14px] text-[var(--muted)]">
-              Your tickets are booked. You keep {fmtKg(Math.max(0, arrived.co2_plane_g - arrived.co2_g))} of CO₂ out of the sky.
+              Your tickets are booked. You keep {fmtKg(arrived.savedG)} of CO₂ out of the sky.
             </p>
             <p className="mt-3 text-[13px]">
               Passport: <b>{passport.stamps.length}</b> stamps · <b>{fmtKg(passport.co2SavedG)}</b> saved
