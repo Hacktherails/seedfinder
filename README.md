@@ -1,20 +1,59 @@
-# 🚆 Train Scanner
+# 🌱 SeedFinder
 
-**Hack the Rails 2026 · Platform 2 — Trip Planner, built with Stripe.** The challenger to Skyscanner and Omio:
-search, compare, combine and pay for multi-leg journeys across Europe in one flow. Payments run on Stripe.
+> **The eco-friendly train booking platform.**
+
+**Hack the Rails 2026 · Platform 2 — Trip Planner, built with Stripe.** Search, compare, combine and pay for
+multi-leg train journeys across Europe in one flow. Payments run on Stripe (test mode).
 
 **New on the team? → [`docs/SETUP.md`](docs/SETUP.md) (install, FR).**
 
-## Quickstart
+## Run locally
 
-Prereqs: Node ≥ 20.19 (26 recommended, see `.nvmrc`), [uv](https://docs.astral.sh/uv/) (installs Python 3.11 by itself).
+### Prerequisites
+
+- **Node.js ≥ 20.19** (26 recommended, see `.nvmrc`)
+- **[uv](https://docs.astral.sh/uv/)**: `curl -LsSf https://astral.sh/uv/install.sh | sh` (installs Python 3.11 by itself)
+- *Optional:* [Stripe CLI](https://docs.stripe.com/stripe-cli) + `stripe login`, for local webhook forwarding
+- *Optional:* Stripe **test** keys (`sk_test_…` / `pk_test_…`) from
+  [dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys). Without them the app runs in demo
+  mode (orders confirmed at once, no real Stripe call).
+
+### One command
+
+```bash
+git clone https://github.com/Hacktherails/seedfinder.git && cd seedfinder
+npm start
+```
+
+`npm start` checks your tools, creates `.env` from `.env.example`, asks once for your Stripe test keys (Enter to skip),
+installs dependencies, then runs the API, the web app and (if the Stripe CLI is logged in) webhook forwarding.
+
+| URL | What |
+| --- | --- |
+| http://localhost:5173 | the app |
+| http://localhost:8100/docs | API docs (OpenAPI UI) |
+
+Test card: `4242 4242 4242 4242`, any future date, any CVC. Ctrl-C stops everything.
+
+| Variant | What |
+| --- | --- |
+| `npm start -- --offline` | no network needed: journeys replayed from the committed demo cache, demo payments |
+| `npm start -- --reset` | wipe the local seeds ledger (`.data/`) for a fresh demo |
+| `npm start -- --share` | also expose a public https URL (Cloudflare Quick Tunnel, needs `cloudflared` or Docker) |
+| `npm start -- --prod` | build and run the production Docker image |
+
+Ports: `API_PORT` (default 8100) and `WEB_PORT` (default 5173) override them; `STRIPE_LISTEN=0` skips webhooks.
+
+### Manual (two terminals)
 
 ```bash
 npm run setup          # npm install + uv sync
-cp .env.example .env   # fill Stripe TEST keys
-npm run dev:api        # FastAPI on :8100  (docs: http://localhost:8100/docs)
-npm run dev            # Vite on :5173, proxies /api → :8100
+cp .env.example .env   # fill Stripe TEST keys (optional)
+npm run dev:api        # terminal 1: FastAPI on :8100 (+ stripe listen if the CLI is logged in)
+npm run dev            # terminal 2: Vite on :5173, proxies /api → :8100
 ```
+
+### Useful commands
 
 | Command | What |
 | --- | --- |
@@ -23,6 +62,7 @@ npm run dev            # Vite on :5173, proxies /api → :8100
 | `npm run lint` | oxlint + ruff |
 | `npm run build` | production web build |
 | `npm run gen:api` | regenerate `contracts/openapi.json` after changing the API models |
+| `npm run warm:cache` | refresh the offline demo cache (needs network) |
 | `scripts/aikido_release_gate.sh` | release gate: Aikido Local Scanner in Docker (needs `AIKIDO_API_KEY` in `.env`) |
 
 ## Layout
