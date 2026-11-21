@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { ArrowRight, Calendar, Clock3, Compass, ShieldCheck, Sparkles, Train } from 'lucide-react'
+import { ArrowRight, Calendar, Clock3, Compass, Leaf, ShieldCheck, Sparkles, Train } from 'lucide-react'
 import { api } from './api/client'
 import type { Account, Basket, Journey, JourneySearch, LngLat, Network, Order, Quote, Station, Stay } from './api/types'
 import { fmtKg, fmtPrice, tomorrow } from './format'
@@ -50,7 +50,18 @@ interface PlannerSeed {
   fromName: string
   toName: string
   date: string
+  via?: string[] // stopovers, one night each (stays offered)
 }
+
+// "Zurich hb" finds "Zürich HB": accents and case never block the landing page hand-off.
+const norm = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+const findHub = (hubs: Station[], name: string) =>
+  hubs.find((h) => norm(h.name) === norm(name)) ?? hubs.find((h) => norm(h.name).includes(norm(name))) ?? null
 
 interface PlannerPageProps {
   seed: PlannerSeed | null
@@ -133,15 +144,22 @@ function PlannerPage({ seed, onHome }: PlannerPageProps) {
   // Prefill the planner when entering it from the landing quick planner.
   useEffect(() => {
     if (!network || !seed || seeded.current) return
-    const byName = (name: string) =>
-      network.hubs.find((h) => h.name.toLowerCase() === name.trim().toLowerCase()) ?? null
-    const from = byName(seed.fromName)
-    const to = byName(seed.toName)
-    if (!from || !to) return
+    seeded.current = true
+    const from = findHub(network.hubs, seed.fromName)
+    const to = findHub(network.hubs, seed.toName)
+    if (!from || !to) {
+      setError(`Unknown station: ${!from ? seed.fromName : seed.toName}. Pick one on the map.`)
+      return
+    }
     dispatch({ type: 'setDepartDate', date: seed.date })
     dispatch({ type: 'pick', station: from })
     dispatch({ type: 'pick', station: to })
-    seeded.current = true
+    ;(seed.via ?? []).forEach((name, i) => {
+      const station = findHub(network.hubs, name)
+      if (!station) return
+      dispatch({ type: 'insertStop', index: i + 1, station })
+      dispatch({ type: 'setNights', index: i + 1, nights: 1 })
+    })
   }, [network, seed])
 
   useEffect(() => {
@@ -755,28 +773,29 @@ interface CuratedTrip {
   image: string
 }
 
+// Hub names only (network.json) and segments kept in the offline demo cache (scripts/warm_cache.py).
 const CURATED_HOME_TRIPS: CuratedTrip[] = [
   {
     id: 1,
     title: 'The Imperial Axis of Central Europe',
-    stops: ['Bruxelles-Midi', 'Berlin Hbf', 'Praha hl.n.', 'Wien Hbf'],
-    days: 7,
+    stops: ['Bruxelles-Midi', 'Köln Hbf', 'Berlin Hbf', 'Praha hlavní nádraží'],
+    days: 4,
     priceFrom: 145,
     image: 'https://images.unsplash.com/photo-1541849546-216549ae216d?auto=format&fit=crop&w=1200&q=80',
   },
   {
     id: 2,
     title: 'Across the Alps via the Gotthard',
-    stops: ['Paris Nord', 'Zurich HB', 'Milano Centrale'],
-    days: 4,
+    stops: ['Paris Gare de Lyon', 'Zürich HB', 'Milano Centrale'],
+    days: 3,
     priceFrom: 129,
     image: 'https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&w=1200&q=80',
   },
   {
     id: 3,
-    title: 'Heading for the Nordic Capitals',
-    stops: ['Amsterdam Centraal', 'Kobenhavn H', 'Stockholm Central'],
-    days: 6,
+    title: 'Heading for Scandinavia',
+    stops: ['Amsterdam Centraal', 'Hamburg Hbf', 'København H'],
+    days: 3,
     priceFrom: 168,
     image: 'https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=1200&q=80',
   },
@@ -787,14 +806,14 @@ const HOME_STATIONS = [
   'Paris Nord',
   'Amsterdam Centraal',
   'Berlin Hbf',
-  'Zurich HB',
-  'Praha hl.n.',
+  'Köln Hbf',
+  'Zürich HB',
+  'Praha hlavní nádraží',
   'Wien Hbf',
   'Milano Centrale',
-  'Kobenhavn H',
-  'Stockholm Central',
+  'København H',
   'London St Pancras',
-  'Munchen Hbf',
+  'München Hbf',
 ]
 
 // Same visual language as the planner: map-grey page, white 24 px cards with the panel shadow,
@@ -918,6 +937,19 @@ function LandingPage({ onPlan }: LandingProps) {
                 <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
                 <span>Grow from 🌰 Seed to 🌱 Sprout, 🌿 Sapling, 🌳 Tree and 🌲 Forest.</span>
               </li>
+              <li className="flex items-start gap-2">
+                <Leaf className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                <span>
+                  <b>100 seeds = €1 off</b> your next green ticket, up to 30 %. Brussels → Berlin plants about 170. 100 seeds to
+                  start with.
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                <span>
+                  <b>Paid for by our commission</b>, never by a higher fare: every ticket stays profitable.
+                </span>
+              </li>
             </ul>
             <button type="button" onClick={() => onPlan()} className={`${HOME_BTN} mt-6 h-11 px-5 text-sm`}>
               Start planting seeds
@@ -999,7 +1031,13 @@ function LandingPage({ onPlan }: LandingProps) {
                       <span className="block text-[11px] text-[var(--muted)]">From</span>
                       <span className="text-lg font-semibold tracking-tight">€{trip.priceFrom}</span>
                     </div>
-                    <button type="button" onClick={() => onPlan()} className={`${HOME_BTN} h-9 px-3 text-xs`}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onPlan({ fromName: trip.stops[0], toName: trip.stops.at(-1)!, via: trip.stops.slice(1, -1), date: tomorrow() })
+                      }
+                      className={`${HOME_BTN} h-9 px-3 text-xs`}
+                    >
                       Plan
                       <ArrowRight className="size-3.5" />
                     </button>

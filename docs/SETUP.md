@@ -21,10 +21,12 @@ Python 3.11 n'est **pas** à installer : uv le télécharge tout seul.
 npm start                 # installe ce qui manque, demande les clés Stripe test une fois, lance API + front (+ webhooks)
 npm start -- --share      # idem + URL publique https (Cloudflare Quick Tunnel, sans compte), pour un téléphone ou le jury
 npm start -- --reset      # remet à zéro les seeds (démo propre)
+npm start -- --offline    # sans WiFi : trajets rejoués depuis le cache commité, paiement en mode démo
+npm run warm:cache        # (en ligne) rafraîchit ce cache, puis commiter apps/api/trainscanner/data/cache
 npm start -- --prod       # construit et lance l'image Docker de production sur http://localhost:8100
 ```
 
-Le reste de ce document détaille les étapes à la main.
+Déroulé de la démo et parades : [`DEMO.md`](DEMO.md). Le reste de ce document détaille les étapes à la main.
 
 ## Déployer (Render, plan gratuit)
 
