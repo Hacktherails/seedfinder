@@ -30,11 +30,13 @@ sont envoyées **par message privé** (jamais dans le repo, une issue ou Slack p
 ```
 STRIPE_SECRET_KEY=sk_test_...
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...   # affiché par `stripe listen` (voir ci-dessous)
+STRIPE_WEBHOOK_SECRET=whsec_...   # optionnel : `npm run dev:api` l'injecte tout seul (voir ci-dessous)
 AIKIDO_API_KEY=...                # pour le release gate
 ```
 
-Webhooks en local : `stripe listen --forward-to localhost:8100/api/stripe/webhook`.
+Webhooks en local : rien à faire. Si la Stripe CLI est installée et connectée (`stripe login`), `npm run dev:api`
+lance aussi `stripe listen` (lignes préfixées `[stripe]`) et passe le secret à l'API. Pour le désactiver :
+`STRIPE_LISTEN=0 npm run dev:api`. Pour le lancer seul : `npm run dev:stripe`.
 
 ## 3. Vérifier que tout marche
 
@@ -75,7 +77,8 @@ Release gate : `docker pull aikidosecurity/local-scanner` (1,1 Go, à faire ce s
 | Bandeau rouge « API error » dans le front | l'API ne tourne pas → `npm run dev:api` |
 | `uv: command not found` | relance ton terminal après l'install de uv |
 | `npm ci` / peer deps qui échouent | Node trop vieux → `node -v` doit être ≥ 20.19 |
-| Webhook Stripe 400 « signature » | `STRIPE_WEBHOOK_SECRET` doit être celui affiché par le `stripe listen` en cours |
+| Webhook Stripe 400 « signature » | `STRIPE_WEBHOOK_SECRET` doit être celui affiché par le `stripe listen` en cours (`npm run dev:api` s'en charge) |
+| `[stripe] CLI not logged in or offline` | `stripe login`, puis relance `npm run dev:api` |
 
 ## 6. Demain — sac à dos
 

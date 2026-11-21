@@ -174,6 +174,8 @@
         }
       }
     },
+<<<<<<< HEAD
+=======
     "/api/basket": {
       "post": {
         "tags": [
@@ -215,6 +217,7 @@
         }
       }
     },
+>>>>>>> origin/main
     "/api/checkout": {
       "post": {
         "tags": [
@@ -255,10 +258,45 @@
           }
         }
       }
+<<<<<<< HEAD
+    },
+    "/api/stripe/webhook": {
+      "post": {
+        "tags": [
+          "stripe"
+        ],
+        "summary": "Stripe Webhook",
+        "operationId": "stripe_webhook_api_stripe_webhook_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Stripe Webhook Api Stripe Webhook Post"
+                }
+              }
+            }
+          }
+        }
+      }
+=======
+>>>>>>> origin/main
     }
   },
   "components": {
     "schemas": {
+<<<<<<< HEAD
+      "CheckoutRequest": {
+        "properties": {
+          "journey_id": {
+            "type": "string",
+            "title": "Journey Id"
+=======
       "Basket": {
         "properties": {
           "journeys": {
@@ -284,10 +322,14 @@
           "co2_plane_g": {
             "type": "integer",
             "title": "Co2 Plane G"
+>>>>>>> origin/main
           }
         },
         "type": "object",
         "required": [
+<<<<<<< HEAD
+          "journey_id"
+=======
           "journeys",
           "total_cents",
           "co2_g",
@@ -328,6 +370,7 @@
         "type": "object",
         "required": [
           "journey_ids"
+>>>>>>> origin/main
         ],
         "title": "CheckoutRequest"
       },
@@ -633,6 +676,8 @@
       },
       "Stop": {
         "properties": {
+<<<<<<< HEAD
+=======
           "id": {
             "anyOf": [
               {
@@ -644,6 +689,7 @@
             ],
             "title": "Id"
           },
+>>>>>>> origin/main
           "name": {
             "type": "string",
             "title": "Name"
