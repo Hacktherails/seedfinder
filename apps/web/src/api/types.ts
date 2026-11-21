@@ -159,7 +159,7 @@ export interface Order {
 export interface Basket {
   journeys: Journey[]
   stays: Stay[]
-  total_cents: number // tickets + stays, before ECO points; quote.total_cents is what gets charged
+  total_cents: number // tickets + stays, before seeds; quote.total_cents is what gets charged
   currency: string
   co2_g: number
   co2_plane_g: number

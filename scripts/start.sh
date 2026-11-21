@@ -3,7 +3,7 @@
 #
 #   npm start                 # install if needed, ask for Stripe test keys once, run API + web (+ webhooks)
 #   npm start -- --share      # same, plus a public https URL (Cloudflare Quick Tunnel, no account needed)
-#   npm start -- --reset      # wipe the ECO points ledger first (fresh demo)
+#   npm start -- --reset      # wipe the seeds ledger first (fresh demo)
 #   npm start -- --offline    # no WiFi needed: journeys replayed from the committed demo cache
 #   npm start -- --prod       # build and run the production Docker image (what gets deployed)
 #
@@ -97,7 +97,7 @@ ok "api dependencies"
 [[ $RESET == 1 ]] && { rm -rf .data; ok "ECO ledger reset"; }
 if [[ $OFFLINE == 1 ]]; then
   # Env beats .env for both pydantic-settings and Vite. Stripe is unreachable too: demo payments
-  # (order confirmed at once, ECO points still earned and spent).
+  # (order confirmed at once, seeds still earned and spent).
   export OFFLINE_DEMO=true STRIPE_LISTEN=0 STRIPE_SECRET_KEY= VITE_STRIPE_PUBLISHABLE_KEY=
   ok "offline demo: journeys from the demo cache, payments in demo mode (refresh cache online: npm run warm:cache)"
 fi

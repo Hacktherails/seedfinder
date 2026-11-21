@@ -51,7 +51,7 @@ def _account(account_id: str | None) -> Account | None:
 
 
 def _quote(js: list[Journey], ss: list[Stay], acc: Account | None, use_points: bool) -> Quote:
-    """Stays are charged but neither earn nor take ECO points: those only apply to green tickets."""
+    """Stays are charged but neither earn nor take seeds: those only apply to green tickets."""
     subtotal = sum(j.price_cents for j in js) + sum(s.price_cents for s in ss)
     balance = acc.points if acc else 0
     max_points = eco.max_redeemable_points(js, balance) if acc else 0
@@ -110,12 +110,12 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
             sum(eco.co2_saved_g(j) for j in js) if acc else 0,
         )
     except ledger.InsufficientPoints as e:
-        raise HTTPException(409, "not enough ECO points") from e
+        raise HTTPException(409, "not enough seeds") from e
 
     ids = ",".join(body.journey_ids)
     meta = {"journey_ids": ids, "stay_ids": ",".join(body.stay_ids), "order_id": order_id}
     origin = request.headers.get("origin") or "http://localhost:5173"
-    success = f"{origin}/?paid={ids}&order={order_id}"
+    success = f"{origin}/map?paid={ids}&order={order_id}"
     if not settings.stripe_secret_key:
         return CheckoutResponse(order_id=order_id, url=success, demo=True, quote=q)
 
@@ -166,14 +166,14 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
                 currency=q.currency.lower(),
                 duration="once",
                 max_redemptions=1,
-                name=f"EcoTokens ({q.points_used})"[:40],
+                name=f"Seeds ({q.points_used})"[:40],
                 metadata={"order_id": order_id},
             )
             params["discounts"] = [{"coupon": coupon.id}]
         if body.embedded:
             params |= {"ui_mode": "embedded_page", "redirect_on_completion": "never"}
         else:
-            params |= {"success_url": success, "cancel_url": f"{origin}/?cancelled={order_id}"}
+            params |= {"success_url": success, "cancel_url": f"{origin}/map?cancelled={order_id}"}
         session = stripe.checkout.Session.create(**params)
     except stripe.StripeError as e:
         ledger.cancel(order_id)  # give the held points back

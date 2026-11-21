@@ -7,11 +7,12 @@ import { greatCircle, journeyPath } from './map/geo'
 import TrainMap from './map/TrainMap'
 import { defaultOptions, travellers, type TripOptions } from './options'
 import CheckoutModal from './panel/CheckoutModal'
-import EcoWallet from './panel/EcoWallet'
 import JourneyCard from './panel/JourneyCard'
 import OptionsPanel from './panel/OptionsPanel'
 import Sheet, { type Snap } from './panel/Sheet'
 import StationCard from './panel/StationCard'
+import SeedWallet from './panel/SeedWallet'
+import SeedIcon from './ui/SeedIcon'
 import StayList from './panel/StayList'
 import StopsEditor from './panel/StopsEditor'
 import { load, save, type Passport } from './storage'
@@ -64,9 +65,10 @@ const findHub = (hubs: Station[], name: string) =>
 
 interface PlannerPageProps {
   seed: PlannerSeed | null
+  onHome: () => void
 }
 
-function PlannerPage({ seed }: PlannerPageProps) {
+function PlannerPage({ seed, onHome }: PlannerPageProps) {
 
   const [network, setNetwork] = useState<Network | null>(null)
   const [trip, dispatch] = useReducer(tripReducer, undefined, initialTrip)
@@ -98,7 +100,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
   const [isPhone, setIsPhone] = useState(() => !window.matchMedia('(min-width: 768px)').matches)
   const runDone = useRef(false)
   const checkoutUrl = useRef<string | null>(null)
-  // ECO points (demo account: email only)
+  // Seeds (demo account: email only)
   const [account, setAccountState] = useState<Account | null>(() => load<Account | null>('account', null))
   const [usePoints, setUsePoints] = useState(true)
   const [order, setOrder] = useState<Order | null>(null)
@@ -110,13 +112,13 @@ function PlannerPage({ seed }: PlannerPageProps) {
     save('account', a)
   }, [])
 
-  // Refresh the ECO balance of a remembered account
+  // Refresh the seed balance of a remembered account
   useEffect(() => {
     const id = load<Account | null>('account', null)?.id
     if (id) api.account(id).then(setAccount, () => setAccount(null))
   }, [setAccount])
 
-  // The server asks Stripe whether the order is paid, then credits the earned ECO points (idempotent).
+  // The server asks Stripe whether the order is paid, then credits the earned seeds (idempotent).
   const confirmOrder = useCallback(
     async (orderId: string) => {
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -192,7 +194,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
     const params = new URLSearchParams(location.search)
     const cancelled = params.get('cancelled')
     if (cancelled) {
-      history.replaceState(null, '', '/')
+      history.replaceState(null, '', '/map')
       api.cancelOrder(cancelled).then((o) => o.account && setAccount(o.account), () => {})
       return
     }
@@ -200,7 +202,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
     const orderId = params.get('order')
     const pending = load<{ searches: JourneySearch[]; ids: string[] } | null>('pending', null, 'session')
     if (!paid || !pending || pending.ids.join(',') !== paid) return
-    history.replaceState(null, '', '/')
+    history.replaceState(null, '', '/map')
     if (orderId) void confirmOrder(orderId)
     celebrate(pending)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on load
@@ -465,17 +467,26 @@ function PlannerPage({ seed }: PlannerPageProps) {
         />
       )}
 
-      <EcoWallet
+      <SeedWallet
         account={account}
         onChange={setAccount}
-        passport={passport}
         earning={total ? total.journeys.reduce((a, j) => a + j.eco_points, 0) : 0}
       />
 
       <Sheet snap={snap} onSnapChange={setSnap} label="Trip planner">
         <header className="px-5 pt-5 pb-3">
           <h1 className="text-[17px] font-semibold tracking-tight">
-            seed<span className="text-[var(--green)]">●</span>finder
+            <button
+              type="button"
+              onClick={onHome}
+              aria-label="Seedfinder, back to the home page"
+              title="Back to the home page"
+              className="-mx-1.5 flex items-center gap-1 rounded-lg px-1.5 py-0.5 transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-[var(--green)] focus-visible:outline-none"
+            >
+              seed
+              <SeedIcon className="size-6" />
+              finder
+            </button>
           </h1>
         </header>
 
@@ -659,16 +670,18 @@ function PlannerPage({ seed }: PlannerPageProps) {
             <div className="mx-auto grid size-20 rotate-[-8deg] place-items-center rounded-full border-2 border-dashed border-[var(--green)] text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase">
               {arrived.city.split(/[ -]/)[0]}
             </div>
-            <h2 className="mt-4 text-xl font-semibold tracking-tight">Bon voyage!</h2>
+            <h2 className="mt-4 text-xl font-semibold tracking-tight">Bon voyage! You planted a seed 🌱</h2>
             <p className="mt-1 text-[14px] text-[var(--muted)]">
-              Your tickets are booked. You keep {fmtKg(arrived.savedG)} of CO₂ out of the sky.
+              Your tickets are booked, and {fmtKg(arrived.savedG)} of CO₂ stays out of the sky.
             </p>
             {order?.status === 'paid' && order.account && (
               <div className="mt-4 rounded-2xl bg-[var(--green-soft)] p-3 text-[var(--green)]">
-                <p className="text-2xl font-semibold tracking-tight">+{order.points_earned} EcoTokens</p>
+                <p className="flex items-center justify-center gap-2 text-2xl font-semibold tracking-tight">
+                  +{order.points_earned} <SeedIcon className="size-7" />
+                </p>
                 <p className="text-[12px]">
-                  {order.points_used > 0 && <>{order.points_used} EcoTokens spent · </>}
-                  balance <b>{order.account.points.toLocaleString('en')}</b> EcoTokens
+                  {order.points_used > 0 && <>{order.points_used} seeds spent · </>}
+                  balance <b>{order.account.points.toLocaleString('en')}</b> seeds
                 </p>
               </div>
             )}
@@ -698,7 +711,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
   )
 }
 
-/** ECO points line of the basket footer. Every figure comes from the API quote. */
+/** Seeds line of the basket footer. Every figure comes from the API quote. */
 function EcoRow({
   basket,
   signedIn,
@@ -714,8 +727,11 @@ function EcoRow({
   const earnable = basket.journeys.reduce((a, j) => a + j.eco_points, 0)
   if (!signedIn)
     return earnable > 0 ? (
-      <p className="mb-2 rounded-xl bg-[var(--green-soft)] px-3 py-2 text-[12px] text-[var(--green)]">
-        🌿 Sign in to earn <b>+{earnable} EcoTokens</b> on this trip and spend them on your next green ticket.
+      <p className="mb-2 flex items-center gap-2 rounded-xl bg-[var(--green-soft)] px-3 py-2 text-[12px] text-[var(--green)]">
+        <SeedIcon className="size-4" />
+        <span>
+          Sign in to earn <b>+{earnable} seeds</b> on this trip and spend them on your next green ticket.
+        </span>
       </p>
     ) : null
   if (!q.points_earned && !q.max_points) return null
@@ -724,7 +740,7 @@ function EcoRow({
       {q.max_points > 0 && (
         <label className="flex cursor-pointer items-center justify-between gap-3 text-[13px]">
           <span>
-            Use <b>{usePoints ? q.points_used : q.max_points}</b> of your {q.balance} EcoTokens
+            Use <b>{usePoints ? q.points_used : q.max_points}</b> of your {q.balance} seeds
             {usePoints && q.discount_cents > 0 && <b> · −{fmtPrice(q.discount_cents, q.currency)}</b>}
           </span>
           <input
@@ -735,7 +751,11 @@ function EcoRow({
           />
         </label>
       )}
-      {q.points_earned > 0 && <p className={q.max_points > 0 ? 'mt-1' : ''}>🌿 You earn +{q.points_earned} EcoTokens with this trip</p>}
+      {q.points_earned > 0 && (
+        <p className={`flex items-center gap-1.5 ${q.max_points > 0 ? 'mt-1' : ''}`}>
+          <SeedIcon className="size-4" /> You plant +{q.points_earned} seeds with this trip
+        </p>
+      )}
     </div>
   )
 }
@@ -757,7 +777,7 @@ interface CuratedTrip {
 const CURATED_HOME_TRIPS: CuratedTrip[] = [
   {
     id: 1,
-    title: "L'axe impérial d'Europe centrale",
+    title: 'The Imperial Axis of Central Europe',
     stops: ['Bruxelles-Midi', 'Köln Hbf', 'Berlin Hbf', 'Praha hlavní nádraží'],
     days: 4,
     priceFrom: 145,
@@ -765,7 +785,7 @@ const CURATED_HOME_TRIPS: CuratedTrip[] = [
   },
   {
     id: 2,
-    title: 'La traversée des Alpes',
+    title: 'Across the Alps via the Gotthard',
     stops: ['Paris Gare de Lyon', 'Zürich HB', 'Milano Centrale'],
     days: 3,
     priceFrom: 129,
@@ -773,7 +793,7 @@ const CURATED_HOME_TRIPS: CuratedTrip[] = [
   },
   {
     id: 3,
-    title: 'Cap sur la Scandinavie',
+    title: 'Heading for Scandinavia',
     stops: ['Amsterdam Centraal', 'Hamburg Hbf', 'København H'],
     days: 3,
     priceFrom: 168,
@@ -796,6 +816,14 @@ const HOME_STATIONS = [
   'München Hbf',
 ]
 
+// Same visual language as the planner: map-grey page, white 24 px cards with the panel shadow,
+// light-green blocks holding 16 px white cards, small uppercase green labels, ink buttons.
+const HOME_CARD = 'rounded-3xl bg-[var(--card)] shadow-[0_8px_40px_rgba(0,0,0,0.08)]'
+const HOME_LABEL = 'text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase'
+const HOME_BTN =
+  'inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--ink)] font-medium text-[var(--card)] transition-transform active:scale-[0.98]'
+const HOME_INPUT = 'w-full bg-transparent text-[15px] text-[var(--ink)] outline-none'
+
 function LandingPage({ onPlan }: LandingProps) {
   const [fromName, setFromName] = useState('Bruxelles-Midi')
   const [toName, setToName] = useState('Berlin Hbf')
@@ -812,222 +840,205 @@ function LandingPage({ onPlan }: LandingProps) {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--card)] text-[var(--ink)] antialiased">
-      <header className="sticky top-0 z-30 border-b border-[var(--line)]/80 bg-[var(--card)]/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-lg bg-[var(--ink)] text-[var(--card)]">
-              <Train className="size-4" />
-            </div>
-            <span className="text-sm font-semibold tracking-tight">Seedfinder</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onPlan()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--ink)] px-4 text-sm font-medium text-[var(--card)] transition hover:opacity-90"
-          >
-            Planifier
+    <div className="h-full overflow-y-auto bg-[#f2f3f0] text-[var(--ink)] antialiased">
+      <header className="sticky top-0 z-30 px-3 pt-3">
+        <div className={`${HOME_CARD} mx-auto flex h-14 max-w-6xl items-center justify-between pr-2 pl-5`}>
+          <span className="flex items-center gap-1 text-[17px] font-semibold tracking-tight">
+            seed
+            <SeedIcon className="size-6" />
+            finder
+          </span>
+          <button type="button" onClick={() => onPlan()} className={`${HOME_BTN} h-10 px-4 text-sm`}>
+            Plan a trip
             <ArrowRight className="size-4" />
           </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 pt-12 pb-16 sm:px-8 sm:pt-16 sm:pb-20">
-        <section className="relative overflow-hidden rounded-3xl border border-[var(--line)] bg-[radial-gradient(circle_at_12%_12%,var(--green-soft),transparent_38%),radial-gradient(circle_at_88%_8%,var(--green-soft),transparent_32%),linear-gradient(180deg,var(--card),#f6f2eb)] px-6 py-12 sm:px-10 sm:py-16">
-          <p className="inline-flex items-center rounded-full border border-[var(--line)] bg-white/70 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--muted)]">
-            Europe Rail Planner
-          </p>
-          <h1 className="mt-5 max-w-3xl text-4xl leading-tight font-semibold tracking-tight sm:text-6xl">
-            Trace ton itinéraire ferroviaire en Europe.
-          </h1>
-          <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--muted)] sm:text-lg">
-            Tous les opérateurs comparés, l'impact CO₂ face à l'avion sur chaque trajet, et un seul paiement pour tout le voyage. Le train devient l'option évidente, et il te rapporte des points.
-          </p>
+      <main className="mx-auto max-w-6xl space-y-4 px-3 pt-4 pb-16">
+        {/* Hero: pitch on the left, the quick planner styled like the panel's itinerary block on the right */}
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-[1.2fr_0.8fr]">
+          <div className={`${HOME_CARD} flex flex-col justify-center p-6 sm:p-10`}>
+            <p className={HOME_LABEL}>Trains across Europe, for the planet</p>
+            <h1 className="mt-3 max-w-2xl text-4xl leading-[1.05] font-semibold tracking-tight sm:text-5xl">
+              Find your way.
+              <br />
+              <span className="text-[var(--green)]">Plant a seed.</span>
+            </h1>
+            <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[var(--muted)] sm:text-base">
+              Every train you take instead of a plane plants a seed for the planet. Search every operator, compare price, time and CO₂,
+              and book it all in one payment.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2 text-[12px] font-medium">
+              <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">🌱 Up to −95 % CO₂ vs flying</span>
+              <span className="rounded-full bg-[var(--hover)] px-3 py-1">One payment, every operator</span>
+              <span className="rounded-full bg-[var(--hover)] px-3 py-1">Live map</span>
+            </div>
+          </div>
 
-          <form onSubmit={submitQuickPlan} className="mt-8 rounded-2xl border border-[var(--line)] bg-white/80 p-4 backdrop-blur-sm sm:p-5">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--muted)]">Planificateur rapide</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <label className="text-xs text-[var(--muted)]">
-                Départ
-                <input
-                  list="home-stations"
-                  value={fromName}
-                  onChange={(e) => setFromName(e.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 text-sm text-[var(--ink)] outline-none focus:border-[var(--ink)]"
-                  required
-                />
+          <form onSubmit={submitQuickPlan} className="rounded-3xl bg-[var(--green-soft)] p-2 shadow-[0_8px_40px_rgba(19,138,75,0.12)]">
+            <p className={`${HOME_LABEL} px-2 pt-1 pb-1.5`}>Quick planner</p>
+            <div className="rounded-2xl bg-[var(--card)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+              <label className="flex items-center gap-3 px-4 py-3">
+                <span className="size-2.5 shrink-0 rounded-full border-2 border-[var(--green)]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] text-[var(--muted)]">From</span>
+                  <input list="home-stations" value={fromName} onChange={(e) => setFromName(e.target.value)} className={HOME_INPUT} required />
+                </span>
               </label>
-              <label className="text-xs text-[var(--muted)]">
-                Arrivée
-                <input
-                  list="home-stations"
-                  value={toName}
-                  onChange={(e) => setToName(e.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 text-sm text-[var(--ink)] outline-none focus:border-[var(--ink)]"
-                  required
-                />
+              <div className="mx-4 border-t border-[var(--line)]" />
+              <label className="flex items-center gap-3 px-4 py-3">
+                <span className="size-2.5 shrink-0 rounded-full border-2 border-[var(--green)] bg-[var(--green)]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] text-[var(--muted)]">To</span>
+                  <input list="home-stations" value={toName} onChange={(e) => setToName(e.target.value)} className={HOME_INPUT} required />
+                </span>
               </label>
-              <label className="text-xs text-[var(--muted)]">
-                Date
+              <label className="block border-t border-[var(--line)] px-4 py-3">
+                <span className="block text-[11px] text-[var(--muted)]">Depart</span>
                 <input
                   type="date"
                   value={date}
                   min={new Date().toISOString().slice(0, 10)}
                   onChange={(e) => setDate(e.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 text-sm text-[var(--ink)] outline-none focus:border-[var(--ink)]"
+                  className={HOME_INPUT}
                   required
                 />
               </label>
-              <button
-                type="submit"
-                className="mt-[19px] inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ink)] px-4 text-sm font-medium text-[var(--card)] transition hover:opacity-90"
-              >
-                Planifier
-                <ArrowRight className="size-4" />
-              </button>
             </div>
+            <button type="submit" className={`${HOME_BTN} mt-2 h-12 w-full text-[15px]`}>
+              Find my route
+              <ArrowRight className="size-4" />
+            </button>
+            <p className="px-2 pt-2 pb-1 text-[12px] text-[var(--green)]">Works on mobile and desktop, with a live map.</p>
             <datalist id="home-stations">
               {HOME_STATIONS.map((station) => (
                 <option key={station} value={station} />
               ))}
             </datalist>
-            <p className="mt-3 text-sm text-[var(--muted)]">Mobile et desktop, carte en direct incluse.</p>
           </form>
         </section>
 
-        <section className="mt-10 overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--card)]">
-          <div className="grid grid-cols-1 items-stretch md:grid-cols-[1.1fr_0.9fr]">
-            <div className="p-6 sm:p-8">
-              <p className="inline-flex items-center rounded-full border border-[var(--line)] bg-[var(--hover)] px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--muted)]">
-                Programme fidélité climat
-              </p>
-              <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Le train te rapporte, l'avion non.</h2>
-              <p className="mt-3 text-sm leading-relaxed text-[var(--muted)] sm:text-base">
-                Chaque billet vert te crédite des EcoTokens en proportion du CO₂ que tu évites en ne prenant pas l'avion. Tu les dépenses
-                comme réduction sur ton prochain billet vert, directement dans le paiement Stripe.
-              </p>
-              <ul className="mt-5 space-y-2 text-sm text-[var(--ink)]">
-                <li className="flex items-start gap-2">
-                  <Leaf className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
-                  <span>
-                    <b>1 EcoToken par kg de CO₂ évité.</b> Bruxelles → Berlin en train : environ 170 tokens.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
-                  <span>
-                    <b>100 EcoTokens = 1 € de réduction</b>, jusqu'à 30 % d'un billet vert. 100 tokens offerts à l'inscription.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
-                  <span>
-                    <b>Financé par notre commission</b>, pas par une hausse de prix : chaque billet reste rentable.
-                  </span>
-                </li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => onPlan()}
-                className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ink)] px-5 text-sm font-medium text-[var(--card)] transition hover:opacity-90"
-              >
-                Commencer à gagner des EcoTokens
-                <ArrowRight className="size-4" />
-              </button>
-            </div>
-
-            <div className="relative min-h-[260px] bg-[radial-gradient(circle_at_30%_20%,var(--green-soft),transparent_60%),var(--hover)]">
-              <img
-                src="/ecoToken.png"
-                alt="EcoToken"
-                className="absolute inset-0 h-full w-full object-contain p-8"
-              />
-            </div>
+        {/* Seeds rewards */}
+        <section className={`${HOME_CARD} grid grid-cols-1 gap-2 p-2 md:grid-cols-[1.1fr_0.9fr]`}>
+          <div className="p-5 sm:p-8">
+            <p className={HOME_LABEL}>Seeds, our climate rewards</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Every green ticket plants seeds.</h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
+              You get 1 seed for every kg of CO₂ you keep out of the sky by taking the train instead of flying. Spend them on your
+              next green ticket, and watch your impact grow from a seed into a forest.
+            </p>
+            <ul className="mt-5 space-y-2 text-sm">
+              <li className="flex items-start gap-2">
+                <SeedIcon className="mt-0.5 size-4" />
+                <span>The greener the route, the more seeds it plants.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                <span>Grow from 🌰 Seed to 🌱 Sprout, 🌿 Sapling, 🌳 Tree and 🌲 Forest.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Leaf className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                <span>
+                  <b>100 seeds = €1 off</b> your next green ticket, up to 30 %. Brussels → Berlin plants about 170. 100 seeds to
+                  start with.
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
+                <span>
+                  <b>Paid for by our commission</b>, never by a higher fare: every ticket stays profitable.
+                </span>
+              </li>
+            </ul>
+            <button type="button" onClick={() => onPlan()} className={`${HOME_BTN} mt-6 h-11 px-5 text-sm`}>
+              Start planting seeds
+              <ArrowRight className="size-4" />
+            </button>
+          </div>
+          <div className="grid min-h-[260px] place-items-center rounded-2xl bg-[var(--green-soft)] p-8">
+            <img src="/ecoToken-512.png" alt="Seedfinder reward token: a train with a sprouting leaf" className="size-48 drop-shadow-[0_12px_24px_rgba(19,138,75,0.25)] sm:size-56" />
           </div>
         </section>
 
-        <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <article className="rounded-2xl border border-[var(--line)] bg-white/70 p-4">
-            <div className="mb-2 flex items-center gap-2 text-[var(--muted)]">
-              <Compass className="size-4" />
-              <span className="text-xs font-medium uppercase tracking-wide">Fluidité</span>
-            </div>
-            <h2 className="text-sm font-semibold">Correspondances optimisées</h2>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Assemble plusieurs étapes tout en gardant une vue claire des changements.</p>
-          </article>
-
-          <article className="rounded-2xl border border-[var(--line)] bg-white/70 p-4">
-            <div className="mb-2 flex items-center gap-2 text-[var(--muted)]">
-              <Sparkles className="size-4" />
-              <span className="text-xs font-medium uppercase tracking-wide">Réseau</span>
-            </div>
-            <h2 className="text-sm font-semibold">Opérateurs européens réunis</h2>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Eurostar, ICE, TGV, ÖBB, SBB et plus, dans un même flow de recherche.</p>
-          </article>
-
-          <article className="rounded-2xl border border-[var(--line)] bg-white/70 p-4">
-            <div className="mb-2 flex items-center gap-2 text-[var(--muted)]">
-              <ShieldCheck className="size-4" />
-              <span className="text-xs font-medium uppercase tracking-wide">Confiance</span>
-            </div>
-            <h2 className="text-sm font-semibold">Un seul paiement</h2>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">Tous les billets et nuitées du voyage réglés en une fois avec Stripe, EcoTokens déduits.</p>
-          </article>
+        {/* Why */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {(
+            [
+              [Compass, '1 · Find', 'The greenest way there', 'Every operator in one search: Eurostar, ICE, TGV, ÖBB, SBB and more.'],
+              [ShieldCheck, '2 · Ride', 'One checkout, every ticket', 'Combine several legs and book them all in a single Stripe payment.'],
+              [Sparkles, '3 · Grow', 'Plant seeds as you travel', 'Each green trip plants seeds that grow your impact and pay for your next ticket.'],
+            ] as const
+          ).map(([Icon, label, title, text]) => (
+            <article key={label} className={`${HOME_CARD} p-5`}>
+              <div className="flex items-center gap-2">
+                <span className="grid size-8 place-items-center rounded-full bg-[var(--green-soft)] text-[var(--green)]">
+                  <Icon className="size-4" />
+                </span>
+                <span className={HOME_LABEL}>{label}</span>
+              </div>
+              <h2 className="mt-3 text-[15px] font-semibold">{title}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{text}</p>
+            </article>
+          ))}
         </section>
 
-        <section className="mt-12">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        {/* Suggested itineraries: stops drawn like the planner's journey details */}
+        <section className="pt-6">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3 px-1">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight">Itinéraires suggérés</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">Un clic pour charger toutes les étapes dans le planificateur, nuits sur place comprises.</p>
+              <p className={HOME_LABEL}>Inspiration</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight">Suggested itineraries</h2>
             </div>
             <button
               type="button"
               onClick={() => onPlan()}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm font-medium text-[var(--ink)] transition hover:bg-[var(--hover)]"
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--card)] px-4 text-sm font-medium shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:bg-[var(--hover)]"
             >
-              Ouvrir le planificateur
+              Open the planner
               <ArrowRight className="size-4" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {CURATED_HOME_TRIPS.map((trip) => (
-              <article key={trip.id} className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
-                <div className="aspect-[16/10] overflow-hidden bg-[var(--hover)]">
+              <article key={trip.id} className={`${HOME_CARD} flex flex-col p-2`}>
+                <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[var(--hover)]">
                   <img src={trip.image} alt={trip.title} className="h-full w-full object-cover" loading="lazy" />
-                </div>
-                <div className="p-4">
-                  <div className="mb-3 flex items-center gap-2 text-[11px] text-[var(--muted)]">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] px-2 py-0.5">
-                      <Calendar className="size-3" /> {trip.days} jours
+                  <div className="absolute top-2 left-2 flex gap-1.5 text-[11px] font-medium">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--card)]/90 px-2 py-0.5 backdrop-blur">
+                      <Calendar className="size-3" /> {trip.days} days
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] px-2 py-0.5">
-                      <Clock3 className="size-3" /> {trip.stops.length} gares
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--card)]/90 px-2 py-0.5 backdrop-blur">
+                      <Clock3 className="size-3" /> {trip.stops.length} stations
                     </span>
                   </div>
-
-                  <h3 className="text-base font-semibold leading-snug">{trip.title}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{trip.stops.join(' → ')}</p>
-
-                  <div className="mt-4 flex items-center justify-between">
+                </div>
+                <div className="flex flex-1 flex-col p-3">
+                  <h3 className="text-base leading-snug font-semibold">{trip.title}</h3>
+                  <ol className="mt-3 ml-1 space-y-1.5 border-l-2 border-[var(--green)] pl-3.5 text-[13px]">
+                    {trip.stops.map((stop, i) => (
+                      <li key={stop} className="relative">
+                        <span
+                          className={`absolute top-1 -left-[21px] size-2.5 rounded-full border-2 border-[var(--green)] ${i === 0 ? 'bg-[var(--card)]' : 'bg-[var(--green)]'}`}
+                        />
+                        {stop}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="mt-auto flex items-center justify-between pt-4">
                     <div>
-                      <span className="block text-[11px] uppercase tracking-wide text-[var(--muted)]">Dès</span>
-                      <span className="text-lg font-semibold text-[var(--green)]">{trip.priceFrom} EUR</span>
+                      <span className="block text-[11px] text-[var(--muted)]">From</span>
+                      <span className="text-lg font-semibold tracking-tight">€{trip.priceFrom}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() =>
-                        onPlan({
-                          fromName: trip.stops[0],
-                          toName: trip.stops.at(-1)!,
-                          via: trip.stops.slice(1, -1),
-                          date: tomorrow(),
-                        })
+                        onPlan({ fromName: trip.stops[0], toName: trip.stops.at(-1)!, via: trip.stops.slice(1, -1), date: tomorrow() })
                       }
-                      className="inline-flex h-9 items-center gap-1 rounded-lg bg-[var(--ink)] px-3 text-xs font-medium text-[var(--card)] transition hover:opacity-90"
+                      className={`${HOME_BTN} h-9 px-3 text-xs`}
                     >
-                      Planifier
+                      Plan
                       <ArrowRight className="size-3.5" />
                     </button>
                   </div>
@@ -1037,19 +1048,16 @@ function LandingPage({ onPlan }: LandingProps) {
           </div>
         </section>
 
-        <section className="mt-12 rounded-2xl border border-[var(--line)] bg-[var(--hover)]/70 p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Closing call to action */}
+        <section className="rounded-3xl bg-[var(--green-soft)] p-2">
+          <div className="flex flex-col gap-4 rounded-2xl bg-[var(--card)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-medium">Prêt à composer un trajet multi-étapes ?</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">Ajoute des étapes sur la carte, choisis tes trains et paie tout en une fois.</p>
+              <p className="text-[15px] font-semibold">Where will your next seed grow?</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Open the map, pick your stations, and let the train do the planting.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => onPlan()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ink)] px-5 text-sm font-medium text-[var(--card)] transition hover:opacity-90"
-            >
-              <Leaf className="size-4" />
-              Ouvrir le planificateur
+            <button type="button" onClick={() => onPlan()} className={`${HOME_BTN} h-11 px-5 text-sm`}>
+              <Train className="size-4" />
+              Open the planner
             </button>
           </div>
         </section>
@@ -1058,15 +1066,45 @@ function LandingPage({ onPlan }: LandingProps) {
   )
 }
 
+// Two pages: /home (landing) and /map (planner). '/' and unknown paths land on /home.
+type View = 'home' | 'map'
+const PATHS: Record<View, string> = { home: '/home', map: '/map' }
+
+function viewFromUrl(): View {
+  const { pathname, search } = window.location
+  const params = new URLSearchParams(search)
+  // Back from Stripe (older links point at '/?paid=…'): that flow lives on the map page
+  const view: View = pathname === PATHS.map || params.has('paid') || params.has('cancelled') ? 'map' : 'home'
+  if (pathname !== PATHS[view]) history.replaceState(null, '', PATHS[view] + search)
+  return view
+}
+
 export default function App() {
-  const [view, setView] = useState<'home' | 'planner'>(() =>
-    new URLSearchParams(window.location.search).has('paid') ? 'planner' : 'home',
-  )
+  const [view, setView] = useState<View>(viewFromUrl)
   const [seed, setSeed] = useState<PlannerSeed | null>(null)
 
-  if (view === 'home') {
-    return <LandingPage onPlan={(nextSeed) => { setSeed(nextSeed ?? null); setView('planner') }} />
+  // Browser back / forward between the two pages
+  useEffect(() => {
+    const onPop = () => setView(viewFromUrl())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const go = (next: View) => {
+    if (window.location.pathname !== PATHS[next]) history.pushState(null, '', PATHS[next])
+    setView(next)
   }
 
-  return <PlannerPage seed={seed} />
+  if (view === 'home') {
+    return (
+      <LandingPage
+        onPlan={(nextSeed) => {
+          setSeed(nextSeed ?? null)
+          go('map')
+        }}
+      />
+    )
+  }
+
+  return <PlannerPage seed={seed} onHome={() => go('home')} />
 }

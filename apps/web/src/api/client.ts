@@ -69,7 +69,7 @@ export const api = {
   signIn: (email: string) => post<Account>('/api/account', { email }),
   account: (id: string) => request<Account>(`/api/account/${encodeURIComponent(id)}`),
   ecoProgram: () => request<EcoProgram>('/api/eco/program'),
-  /** Basket total and ECO quote (points earned / spendable), always computed by the API. */
+  /** Basket total and seeds quote (points earned / spendable), always computed by the API. */
   basket: (body: BasketRequest) => post<Basket>('/api/basket', body),
   checkout: (body: CheckoutRequest) => post<CheckoutResponse>('/api/checkout', body),
   confirmOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/confirm`),

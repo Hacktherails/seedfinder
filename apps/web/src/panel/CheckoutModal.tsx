@@ -2,6 +2,7 @@ import { EmbeddedCheckout, EmbeddedCheckoutProvider } from '@stripe/react-stripe
 import type { Quote } from '../api/types'
 import { fmtPrice } from '../format'
 import { getStripe } from '../stripe'
+import SeedIcon from '../ui/SeedIcon'
 
 interface Props {
   clientSecret: string
@@ -18,8 +19,8 @@ export default function CheckoutModal({ clientSecret, quote, onComplete, onClose
           <div className="text-[13px]">
             <span className="font-medium">Secure payment</span>
             {quote.points_used > 0 && (
-              <span className="ml-2 rounded-full bg-[var(--green-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--green)]">
-                🌿 −{fmtPrice(quote.discount_cents, quote.currency)} with {quote.points_used} EcoTokens
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[var(--green-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--green)]">
+                <SeedIcon className="size-3.5" />−{fmtPrice(quote.discount_cents, quote.currency)} with {quote.points_used} seeds
               </span>
             )}
           </div>

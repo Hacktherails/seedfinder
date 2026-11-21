@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Same variable Vite inlines at build time; also served at runtime by /api/config (deployed image)
     vite_stripe_publishable_key: str | None = None
 
-    # ECO points ledger (SQLite). Demo accounts: email only, no password.
+    # Seeds ledger (SQLite). Demo accounts: email only, no password.
     eco_db_path: Path = REPO_ROOT / ".data" / "eco.sqlite3"
     eco_welcome_points: int = 100
 

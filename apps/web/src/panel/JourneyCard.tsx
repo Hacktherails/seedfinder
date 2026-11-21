@@ -1,5 +1,5 @@
 import type { Journey } from '../api/types'
-import CoinIcon from '../ui/CoinIcon'
+import SeedIcon from '../ui/SeedIcon'
 import { fmtDur, fmtPrice, fmtTime, modeLabel } from '../format'
 
 type Seg = { kind: 'ride' | 'walk' | 'wait'; s: number; label: string }
@@ -67,18 +67,19 @@ export default function JourneyCard({ j, maxDuration, active, open, onHover, onC
             {j.eco_points > 0 && (
               <div
                 className="mt-0.5 flex items-center justify-end gap-1 text-[13px] font-medium text-[var(--green)]"
-                title={`${j.eco_points} EcoTokens earned with this booking`}
+                title={`${j.eco_points} seeds planted with this booking`}
               >
                 +{j.eco_points}
-                <CoinIcon />
+                <SeedIcon />
               </div>
             )}
             <div className="mt-0.5 flex justify-end gap-1">
               {j.tags.map((t) => (
                 <span
                   key={t}
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t === 'greenest' ? 'bg-[var(--green-soft)] text-[var(--green)]' : 'bg-[var(--green-soft)] text-[var(--green)]'}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-[var(--green-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--green)]"
                 >
+                  {t === 'greenest' && <SeedIcon className="size-3" />}
                   {TAG_LABEL[t]}
                 </span>
               ))}
