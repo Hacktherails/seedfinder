@@ -1,0 +1,64 @@
+<document>
+  <metadata>
+    <title>Analyse du marché ferroviaire européen et de ses business models</title>
+    <language>fr</language>
+    <scope>Union Européenne &amp; réseau IRG-Rail (données 2026)</scope>
+  </metadata>
+
+  <section id="1" title="État des lieux et structure du marché européen">
+    <metrics>
+      <metric name="Longueur du réseau (31 pays IRG-Rail)">&gt; 232 000 km (dont ~70 % concentrés dans 8 pays : Allemagne, France, Pologne, Italie, Royaume-Uni, Espagne, Suède, Roumanie)</metric>
+      <metric name="Taux d'électrification">~57 %</metric>
+      <metric name="Répartition du trafic (trains-km)">Voyageurs : ~82 % | Fret : ~18 %</metric>
+      <metric name="Dynamique Voyageurs (2026)">+8 % de revenus sur 1 an (+22 % vs niveaux pré-pandémiques), tirés par la grande vitesse</metric>
+      <metric name="Dynamique Fret (2026)">-2 % à -3 % (volumes et revenus), pénalisé par la route, le ralentissement industriel et les travaux sur corridors</metric>
+    </metrics>
+    <structural_barriers>
+      <barrier>Cadre réglementaire : libéralisation impulsée par les quatre « paquets ferroviaires » de l'UE, mais ouverture hétérogène selon les États membres.</barrier>
+      <barrier>Défaut d'interopérabilité : 4 écartements de rails différents et 5 systèmes d'alimentation électrique.</barrier>
+      <barrier>Signalisation : déploiement inégal de l'ETCS (European Train Control System), inférieur à 5 % sur de grands réseaux comme la France ou l'Allemagne.</barrier>
+    </structural_barriers>
+  </section>
+
+  <section id="2" title="Architecture et Business Models du secteur">
+    <core_principle>Séparation verticale (comptable, organisationnelle ou institutionnelle) imposée par l'UE entre Gestionnaires d'Infrastructure (GI) et Entreprises Ferroviaires (EF).</core_principle>
+
+    <entity type="Gestionnaire d'Infrastructure (GI)">
+      <examples>SNCF Réseau, DB InfraGO, Infrabel, RFI</examples>
+      <role>Monopole naturel régulé : possession, entretien et développement des voies, caténaires et signalisation.</role>
+      <revenue_streams>
+        <stream>Redevances d'infrastructure (péages) payées par les opérateurs par « sillon » réservé (calculées au train-km selon tonnage, créneau horaire et ligne).</stream>
+        <stream>Subventions publiques (États et fonds UE via Connecting Europe Facility) pour la régénération et les nouvelles lignes.</stream>
+      </revenue_streams>
+      <cost_structure>Coûts fixes très lourds : CAPEX d'investissement, maintenance préventive/curative, gestion du trafic.</cost_structure>
+    </entity>
+
+    <entity type="Entreprises Ferroviaires (EF) - Opérateurs">
+      <examples>SNCF Voyageurs, Trenitalia, Renfe, Italo, FlixTrain, Eurostar</examples>
+      <business_models>
+        <model name="Open Access (Service Librement Organisé)">
+          <perimeter>Lignes à Grande Vitesse (LGV), lignes internationales, certains trains de nuit et fret.</perimeter>
+          <risk_profile>100 % commercial (risque recettes et coûts porté intégralement par l'opérateur).</risk_profile>
+          <revenue_streams>Billetterie directe, yield management, services annexes (restauration, classe affaires).</revenue_streams>
+          <market_access>Libre accès au réseau via achat de sillons auprès du GI, sous réserve de capacité disponible.</market_access>
+        </model> 
+        <model name="Marchés Conventionnés (OSP - Obligation de Service Public)">
+          <perimeter>Trains régionaux (TER), banlieue, lignes d'équilibre du territoire (Intercités).</perimeter>
+          <risk_profile>Partagé ou porté par l'autorité publique (Région, État, AOM).</risk_profile>
+          <revenue_streams>Subventions d'exploitation de l'autorité organisatrice + recettes billetterie (contrats gross cost ou net cost).</revenue_streams>
+          <market_access>Attribution par appel d'offres concurrentiel pour une durée définie (généralement 7 à 15 ans).</market_access>
+        </model>
+      </business_models>
+    </entity>
+  </section>
+
+  <section id="3" title="Leviers de rentabilité et stratégies des acteurs">
+    <context>Secteur à très forte intensité capitalistique et aux marges opérationnelles étroites.</context>
+    <levers>
+      <lever name="Effet de volume et Load Factor">Coût marginal par passager quasi nul ; stratégies de haute capacité (ex. Ouigo) et prix d'appel agressifs augmentant le trafic global et baissant les prix moyens sur les axes ouverts (Madrid–Barcelone, Milan–Rome, Paris–Lyon).</lever>
+      <lever name="Financement du matériel roulant (ROSCOs)">Contournement du CAPEX d'achat (25 à 40 M€ par rame TGV) via la location auprès de Rolling Stock Operating Companies (Beacon Rail, Alpha Trains, Akiem).</lever>
+      <lever name="Yield Management et distribution numérique">Tarification dynamique en temps réel inspirée de l'aérien ; émergence d'agrégateurs B2C/B2B (Trainline, Omio, Rail Europe) captant des commissions sur les trajets transfrontaliers.</lever>
+      <lever name="Internationalisation des opérateurs historiques">Expansion hors marché domestique en Open Access ou via filiales : Trenitalia en France et Espagne (Iryo), SNCF en Espagne (Ouigo España) et au Royaume-Uni (Keolis), alliance Eurostar–Thalys sur l'axe Nord-Ouest européen.</lever>
+    </levers>
+  </section>
+</document>
