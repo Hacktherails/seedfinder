@@ -20,6 +20,7 @@ export interface Station {
 }
 
 export interface Stop {
+  id?: string | null
   name: string
   lat: number
   lon: number
@@ -96,7 +97,6 @@ export interface Account {
 }
 
 export interface Quote {
-  journey_id: string
   subtotal_cents: number
   discount_cents: number
   total_cents: number
@@ -107,10 +107,13 @@ export interface Quote {
   balance: number
 }
 
-export interface CheckoutRequest {
-  journey_id: string
+export interface BasketRequest {
+  journey_ids: string[]
   account_id?: string | null
   use_points?: boolean
+}
+
+export interface CheckoutRequest extends BasketRequest {
   embedded?: boolean
 }
 
@@ -126,11 +129,20 @@ export type OrderStatus = 'pending' | 'paid' | 'cancelled'
 
 export interface Order {
   id: string
-  journey_id: string
+  journey_ids: string[]
   status: OrderStatus
   points_used: number
   points_earned: number
   total_cents: number
   co2_saved_g: number
   account?: Account | null
+}
+
+export interface Basket {
+  journeys: Journey[]
+  total_cents: number // before ECO points; quote.total_cents is what gets charged
+  currency: string
+  co2_g: number
+  co2_plane_g: number
+  quote: Quote
 }

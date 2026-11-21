@@ -1,5 +1,7 @@
 import type {
   Account,
+  Basket,
+  BasketRequest,
   CheckoutRequest,
   CheckoutResponse,
   EcoProgram,
@@ -8,7 +10,6 @@ import type {
   Network,
   Order,
   PublicConfig,
-  Quote,
   Station,
 } from './types'
 
@@ -39,11 +40,8 @@ export const api = {
   signIn: (email: string) => post<Account>('/api/account', { email }),
   account: (id: string) => request<Account>(`/api/account/${encodeURIComponent(id)}`),
   ecoProgram: () => request<EcoProgram>('/api/eco/program'),
-  quote: (journey_id: string, account_id: string | null, use_points: boolean, signal?: AbortSignal) =>
-    request<Quote>(
-      `/api/checkout/quote?${qs({ journey_id, use_points: String(use_points), ...(account_id ? { account_id } : {}) })}`,
-      { signal },
-    ),
+  /** Basket total and ECO quote (points earned / spendable), always computed by the API. */
+  basket: (body: BasketRequest) => post<Basket>('/api/basket', body),
   checkout: (body: CheckoutRequest) => post<CheckoutResponse>('/api/checkout', body),
   confirmOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/confirm`),
   cancelOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/cancel`),

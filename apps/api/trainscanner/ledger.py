@@ -66,7 +66,7 @@ def _order(conn: sqlite3.Connection, row: sqlite3.Row | None) -> Order | None:
     acc = conn.execute("SELECT * FROM accounts WHERE id = ?", (d["account_id"],)).fetchone()
     return Order(
         id=d["id"],
-        journey_id=d["journey_id"],
+        journey_ids=d["journey_id"].split(","),  # column keeps its first name: comma-separated ids
         status=d["status"],
         points_used=d["points_used"],
         points_earned=d["points_earned"],
@@ -96,7 +96,7 @@ def get_account(account_id: str) -> Account | None:
 
 def create_order(
     account_id: str | None,
-    journey_id: str,
+    journey_ids: list[str],
     points_used: int,
     points_earned: int,
     total_cents: int,
@@ -114,7 +114,7 @@ def create_order(
         c.execute(
             "INSERT INTO orders (id, account_id, journey_id, points_used, points_earned, total_cents,"
             " co2_saved_g) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (order_id, account_id, journey_id, points_used, points_earned, total_cents, co2_g),
+            (order_id, account_id, ",".join(journey_ids), points_used, points_earned, total_cents, co2_g),
         )
     return order_id
 

@@ -2,11 +2,11 @@ import logging
 import time
 
 import stripe
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from .. import eco, ledger
 from ..config import settings
-from ..models import Account, CheckoutRequest, CheckoutResponse, Journey, Order, Quote
+from ..models import Account, Basket, BasketRequest, CheckoutRequest, CheckoutResponse, Journey, Order, Quote
 from .journeys import JOURNEYS
 
 log = logging.getLogger(__name__)
@@ -15,11 +15,11 @@ router = APIRouter(prefix="/api", tags=["checkout"])
 CHECKOUT_TTL_S = 31 * 60  # Stripe's minimum is 30 min; abandoned sessions expire and release held points
 
 
-def _journey(journey_id: str) -> Journey:
-    j = JOURNEYS.get(journey_id)
-    if not j:
+def _lookup(ids: list[str]) -> list[Journey]:
+    js = [JOURNEYS.get(i) for i in ids]
+    if not all(js):
         raise HTTPException(404, "journey expired, search again")
-    return j
+    return js  # type: ignore[return-value]
 
 
 def _account(account_id: str | None) -> Account | None:
@@ -31,48 +31,56 @@ def _account(account_id: str | None) -> Account | None:
     return acc
 
 
-def _quote(j: Journey, acc: Account | None, use_points: bool) -> Quote:
+def _quote(js: list[Journey], acc: Account | None, use_points: bool) -> Quote:
+    subtotal = sum(j.price_cents for j in js)
     balance = acc.points if acc else 0
-    max_points = eco.max_redeemable_points(j, balance) if acc else 0
+    max_points = eco.max_redeemable_points(js, balance) if acc else 0
     used = max_points if use_points else 0
     discount = used * eco.POINT_VALUE_CENTS
     return Quote(
-        journey_id=j.id,
-        subtotal_cents=j.price_cents,
+        subtotal_cents=subtotal,
         discount_cents=discount,
-        total_cents=j.price_cents - discount,
-        currency=j.currency,
+        total_cents=subtotal - discount,
+        currency=js[0].currency,
         points_used=used,
-        points_earned=j.eco_points if acc else 0,
+        points_earned=sum(j.eco_points for j in js) if acc else 0,
         max_points=max_points,
         balance=balance,
     )
 
 
-@router.get("/checkout/quote")
-def quote(journey_id: str, account_id: str | None = None, use_points: bool = Query(default=False)) -> Quote:
-    return _quote(_journey(journey_id), _account(account_id), use_points)
+@router.post("/basket")
+def basket(body: BasketRequest) -> Basket:
+    js = _lookup(body.journey_ids)
+    return Basket(
+        journeys=js,
+        total_cents=sum(j.price_cents for j in js),
+        co2_g=sum(j.co2_g for j in js),
+        co2_plane_g=sum(j.co2_plane_g for j in js),
+        quote=_quote(js, _account(body.account_id), body.use_points),
+    )
 
 
 @router.post("/checkout")
 def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
-    j = _journey(body.journey_id)
+    js = _lookup(body.journey_ids)
     acc = _account(body.account_id)
-    q = _quote(j, acc, body.use_points)
+    q = _quote(js, acc, body.use_points)
     try:
         order_id = ledger.create_order(
             acc.id if acc else None,
-            j.id,
+            body.journey_ids,
             q.points_used,
             q.points_earned,
             q.total_cents,
-            eco.co2_saved_g(j) if acc else 0,
+            sum(eco.co2_saved_g(j) for j in js) if acc else 0,
         )
     except ledger.InsufficientPoints as e:
         raise HTTPException(409, "not enough ECO points") from e
 
+    ids = ",".join(body.journey_ids)
     origin = request.headers.get("origin") or "http://localhost:5173"
-    success = f"{origin}/?paid={j.id}&order={order_id}"
+    success = f"{origin}/?paid={ids}&order={order_id}"
     if not settings.stripe_secret_key:
         return CheckoutResponse(order_id=order_id, url=success, demo=True, quote=q)
 
@@ -93,11 +101,12 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
                         },
                     },
                 }
+                for j in js
                 for lg in j.legs
                 if lg.price_cents > 0
             ],
-            "metadata": {"journey_id": j.id, "order_id": order_id},
-            "payment_intent_data": {"metadata": {"journey_id": j.id, "order_id": order_id}},
+            "metadata": {"journey_ids": ids, "order_id": order_id},
+            "payment_intent_data": {"metadata": {"journey_ids": ids, "order_id": order_id}},
             "expires_at": int(time.time()) + CHECKOUT_TTL_S,
         }
         if acc:
@@ -106,7 +115,7 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
             coupon = stripe.Coupon.create(
                 api_key=settings.stripe_secret_key,
                 amount_off=q.discount_cents,
-                currency=j.currency.lower(),
+                currency=q.currency.lower(),
                 duration="once",
                 max_redemptions=1,
                 name=f"ECO points ({q.points_used} pts)"[:40],

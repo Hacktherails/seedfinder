@@ -47,10 +47,12 @@ def points_earned(j: Journey) -> int:
     return min(co2_saved_g(j) // GRAMS_PER_POINT, reward_budget_points(j.price_cents))
 
 
-def max_redeemable_points(j: Journey, balance: int) -> int:
-    if not is_green(j) or balance < MIN_REDEEM_POINTS:
+def max_redeemable_points(journeys: list[Journey], balance: int) -> int:
+    """Points only pay for the green part of a basket, up to MAX_DISCOUNT_SHARE of it."""
+    green_cents = sum(j.price_cents for j in journeys if is_green(j))
+    if not green_cents or balance < MIN_REDEEM_POINTS:
         return 0
-    cap = int(j.price_cents * MAX_DISCOUNT_SHARE) // POINT_VALUE_CENTS
+    cap = int(green_cents * MAX_DISCOUNT_SHARE) // POINT_VALUE_CENTS
     return max(0, min(balance, cap))
 
 

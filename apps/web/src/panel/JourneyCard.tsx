@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api/client'
-import type { Account, Journey, Quote } from '../api/types'
+import type { Journey } from '../api/types'
 import { fmtDur, fmtKg, fmtPrice, fmtTime, modeLabel } from '../format'
 
 const TAG_LABEL = { cheapest: 'Cheapest', fastest: 'Fastest', greenest: 'Greenest' } as const
@@ -11,16 +9,19 @@ interface Props {
   open: boolean
   onHover: (id: string | null) => void
   onClick: () => void
-  onBook: (usePoints: boolean) => void
+  onBook: () => void
   booking: boolean
-  account: Account | null
+  actionLabel: string
 }
 
-export default function JourneyCard({ j, active, open, onHover, onClick, onBook, booking, account }: Props) {
+export default function JourneyCard({ j, active, open, onHover, onClick, onBook, booking, actionLabel }: Props) {
   const first = j.legs[0]
   const last = j.legs[j.legs.length - 1]
   const saved = Math.max(0, 1 - j.co2_g / Math.max(1, j.co2_plane_g))
   const transit = j.legs.filter((l) => l.mode !== 'WALK')
+  const night = j.legs.some((l) => l.mode === 'NIGHT_RAIL')
+  const day = (iso: string, tz?: string | null) => new Intl.DateTimeFormat('en-CA', { timeZone: tz ?? undefined }).format(new Date(iso))
+  const nextDay = day(j.arrival, last.destination.tz) > day(j.departure, first.origin.tz)
 
   return (
     <li
@@ -34,6 +35,7 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
             <div className="font-mono text-[17px] tracking-tight">
               {fmtTime(j.departure, first.origin.tz)} <span className="text-[var(--muted)]">→</span>{' '}
               {fmtTime(j.arrival, last.destination.tz)}
+              {nextDay && <sup className="ml-0.5 text-[11px] text-[var(--muted)]">+1</sup>}
             </div>
             <div className="mt-0.5 text-[13px] text-[var(--muted)]">
               {fmtDur(j.duration_s)} · {j.transfers === 0 ? 'Direct' : `${j.transfers} change${j.transfers > 1 ? 's' : ''}`}
@@ -64,6 +66,12 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
             />
           ))}
         </div>
+
+        {night && (
+          <div className="mt-3 rounded-lg bg-[var(--hover)] px-2.5 py-1.5 text-[12px] font-medium">
+            🌙 Night train · one hotel night saved
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between text-[12px]">
           <span className="truncate text-[var(--muted)]">{j.operators.join(' · ')}</span>
@@ -99,7 +107,15 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
               </li>
             ))}
           </ol>
-          <BookBox j={j} account={account} booking={booking} onBook={onBook} />
+          <button
+            type="button"
+            onClick={onBook}
+            disabled={booking}
+            className="mt-4 flex w-full items-center justify-between rounded-xl bg-[var(--ink)] px-4 py-3 text-[15px] font-medium text-[var(--card)] transition-transform active:scale-[0.98] disabled:opacity-60"
+          >
+            <span>{booking ? 'Opening checkout…' : actionLabel}</span>
+            <span>{fmtPrice(j.price_cents, j.currency)} →</span>
+          </button>
           <p className="mt-2 text-center text-[11px] text-[var(--muted)]">
             {transit.length} ticket{transit.length > 1 ? 's' : ''} · {j.operators.length} operator
             {j.operators.length > 1 ? 's' : ''} · one payment
@@ -107,85 +123,5 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
         </div>
       )}
     </li>
-  )
-}
-
-/** Price, ECO points toggle and book button. Every amount comes from the API quote. */
-function BookBox({
-  j,
-  account,
-  booking,
-  onBook,
-}: {
-  j: Journey
-  account: Account | null
-  booking: boolean
-  onBook: (usePoints: boolean) => void
-}) {
-  const [usePoints, setUsePoints] = useState(true)
-  const [fetched, setQuote] = useState<Quote | null>(null)
-  const accountId = account?.id ?? null
-  const balance = account?.points ?? 0
-  const quote = accountId ? fetched : null
-
-  useEffect(() => {
-    if (!accountId) return
-    const ctrl = new AbortController()
-    api.quote(j.id, accountId, usePoints, ctrl.signal).then(setQuote, () => {})
-    return () => ctrl.abort()
-  }, [j.id, accountId, balance, usePoints])
-
-  const canRedeem = (quote?.max_points ?? 0) > 0
-  const spending = canRedeem && usePoints && quote ? quote : null
-  const total = spending ? spending.total_cents : j.price_cents
-
-  return (
-    <>
-      {account && j.green && quote && (
-        <div className="mt-4 rounded-xl border border-[var(--green-soft)] bg-[var(--green-soft)]/50 p-3 text-[13px]">
-          {canRedeem ? (
-            <label className="flex cursor-pointer items-center justify-between gap-3">
-              <span>
-                Use <b>{quote.max_points}</b> of your {quote.balance} ECO points
-              </span>
-              <span className="flex items-center gap-2">
-                {spending && (
-                  <span className="font-medium text-[var(--green)]">−{fmtPrice(spending.discount_cents, j.currency)}</span>
-                )}
-                <input
-                  type="checkbox"
-                  checked={usePoints}
-                  onChange={(e) => setUsePoints(e.target.checked)}
-                  className="size-4 accent-[var(--green)]"
-                />
-              </span>
-            </label>
-          ) : (
-            <p className="text-[var(--muted)]">You have {quote.balance} ECO points. Collect a few more to spend them.</p>
-          )}
-          <p className="mt-1.5 text-[12px] text-[var(--green)]">🌿 You earn +{quote.points_earned} ECO points with this trip</p>
-        </div>
-      )}
-      {!account && j.green && j.eco_points > 0 && (
-        <p className="mt-4 rounded-xl bg-[var(--hover)] p-3 text-[12px] text-[var(--muted)]">
-          Sign in to earn <b className="text-[var(--green)]">+{j.eco_points} ECO points</b> on this trip and spend them on
-          your next green ticket.
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={() => onBook(Boolean(spending))}
-        disabled={booking}
-        className="mt-4 flex w-full items-center justify-between rounded-xl bg-[var(--ink)] px-4 py-3 text-[15px] font-medium text-[var(--card)] transition-transform active:scale-[0.98] disabled:opacity-60"
-      >
-        <span>{booking ? 'Opening checkout…' : 'Book all tickets'}</span>
-        <span>
-          {spending && (
-            <span className="mr-2 text-[13px] font-normal line-through opacity-60">{fmtPrice(j.price_cents, j.currency)}</span>
-          )}
-          {fmtPrice(total, j.currency)} →
-        </span>
-      </button>
-    </>
   )
 }

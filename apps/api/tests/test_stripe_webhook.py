@@ -14,7 +14,7 @@ URL = "/api/stripe/webhook"
 
 
 def _event(type_: str, payment_status: str = "paid", order_id: str | None = None) -> bytes:
-    metadata = {"journey_id": "j1"} | ({"order_id": order_id} if order_id else {})
+    metadata = {"journey_ids": "j1"} | ({"order_id": order_id} if order_id else {})
     return json.dumps(
         {
             "id": "evt_1",
@@ -80,7 +80,7 @@ def test_webhook_ignores_unpaid_session(client, webhook_secret):
 
 def _order(points_used: int = 50, points_earned: int = 200) -> tuple[str, str]:
     acc = ledger.sign_in("ada@example.com")
-    return acc.id, ledger.create_order(acc.id, "j1", points_used, points_earned, 9000, 230_000)
+    return acc.id, ledger.create_order(acc.id, ["j1"], points_used, points_earned, 9000, 230_000)
 
 
 def test_webhook_credits_eco_points_once(client, webhook_secret):

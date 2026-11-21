@@ -301,57 +301,30 @@
         }
       }
     },
-    "/api/checkout/quote": {
-      "get": {
+    "/api/basket": {
+      "post": {
         "tags": [
           "checkout"
         ],
-        "summary": "Quote",
-        "operationId": "quote_api_checkout_quote_get",
-        "parameters": [
-          {
-            "name": "journey_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Journey Id"
+        "summary": "Basket",
+        "operationId": "basket_api_basket_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BasketRequest"
+              }
             }
           },
-          {
-            "name": "account_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Account Id"
-            }
-          },
-          {
-            "name": "use_points",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Use Points"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Quote"
+                  "$ref": "#/components/schemas/Basket"
                 }
               }
             }
@@ -557,11 +530,90 @@
         ],
         "title": "Account"
       },
+      "Basket": {
+        "properties": {
+          "journeys": {
+            "items": {
+              "$ref": "#/components/schemas/Journey"
+            },
+            "type": "array",
+            "title": "Journeys"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "co2_g": {
+            "type": "integer",
+            "title": "Co2 G"
+          },
+          "co2_plane_g": {
+            "type": "integer",
+            "title": "Co2 Plane G"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/Quote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "journeys",
+          "total_cents",
+          "co2_g",
+          "co2_plane_g",
+          "quote"
+        ],
+        "title": "Basket"
+      },
+      "BasketRequest": {
+        "properties": {
+          "journey_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Journey Ids"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "use_points": {
+            "type": "boolean",
+            "title": "Use Points",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "journey_ids"
+        ],
+        "title": "BasketRequest"
+      },
       "CheckoutRequest": {
         "properties": {
-          "journey_id": {
-            "type": "string",
-            "title": "Journey Id"
+          "journey_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Journey Ids"
           },
           "account_id": {
             "anyOf": [
@@ -587,7 +639,7 @@
         },
         "type": "object",
         "required": [
-          "journey_id"
+          "journey_ids"
         ],
         "title": "CheckoutRequest"
       },
@@ -942,9 +994,12 @@
             "type": "string",
             "title": "Id"
           },
-          "journey_id": {
-            "type": "string",
-            "title": "Journey Id"
+          "journey_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Journey Ids"
           },
           "status": {
             "type": "string",
@@ -980,7 +1035,7 @@
         "type": "object",
         "required": [
           "id",
-          "journey_id",
+          "journey_ids",
           "status",
           "points_used",
           "points_earned",
@@ -1008,10 +1063,6 @@
       },
       "Quote": {
         "properties": {
-          "journey_id": {
-            "type": "string",
-            "title": "Journey Id"
-          },
           "subtotal_cents": {
             "type": "integer",
             "title": "Subtotal Cents"
@@ -1048,7 +1099,6 @@
         },
         "type": "object",
         "required": [
-          "journey_id",
           "subtotal_cents",
           "discount_cents",
           "total_cents",
@@ -1057,7 +1107,8 @@
           "max_points",
           "balance"
         ],
-        "title": "Quote"
+        "title": "Quote",
+        "description": "What the traveller pays for a basket, ECO points included. Computed server-side only."
       },
       "SignInRequest": {
         "properties": {
@@ -1113,6 +1164,17 @@
       },
       "Stop": {
         "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
           "name": {
             "type": "string",
             "title": "Name"
