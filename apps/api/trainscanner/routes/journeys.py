@@ -17,7 +17,9 @@ def _ts(iso: str) -> datetime:
 
 
 def _stop(p: dict, key: str) -> Stop:
-    return Stop(name=p["name"], lat=p["lat"], lon=p["lon"], time=p.get(key) or "", tz=p.get("tz"))
+    return Stop(
+        id=p.get("stopId"), name=p["name"], lat=p["lat"], lon=p["lon"], time=p.get(key) or "", tz=p.get("tz")
+    )
 
 
 def _leg(raw: dict) -> Leg:

@@ -16,6 +16,7 @@ export interface Station {
 }
 
 export interface Stop {
+  id?: string | null
   name: string
   lat: number
   lon: number
@@ -73,4 +74,12 @@ export interface Network {
 export interface CheckoutResponse {
   url: string
   demo: boolean
+}
+
+export interface Basket {
+  journeys: Journey[]
+  total_cents: number
+  currency: string
+  co2_g: number
+  co2_plane_g: number
 }
