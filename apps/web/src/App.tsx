@@ -178,7 +178,9 @@ export default function App() {
     for (const j of segment?.journeys ?? [])
       for (const l of j.legs)
         if (l.mode !== 'WALK')
-          for (const p of [l.origin, l.destination]) s.set(p.name, { id: p.name, name: p.name, lat: p.lat, lon: p.lon })
+          for (const p of [l.origin, l.destination])
+            // Only stops with a real Transitous id can be searched from; a name is rejected upstream (404).
+            if (p.id && !s.has(p.name)) s.set(p.name, { id: p.id, name: p.name, lat: p.lat, lon: p.lon })
     return [...s.values()]
   }, [network, segment])
 

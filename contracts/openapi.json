@@ -633,6 +633,17 @@
       },
       "Stop": {
         "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
           "name": {
             "type": "string",
             "title": "Name"

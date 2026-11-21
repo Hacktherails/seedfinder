@@ -12,6 +12,7 @@ class Station(BaseModel):
 
 
 class Stop(BaseModel):
+    id: str | None = None  # Transitous stopId, usable as from/to in /api/journeys
     name: str
     lat: float
     lon: float

@@ -16,6 +16,7 @@ export interface Station {
 }
 
 export interface Stop {
+  id?: string | null
   name: string
   lat: number
   lon: number
