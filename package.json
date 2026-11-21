@@ -1,0 +1,20 @@
+{
+  "name": "train-scanner",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/web",
+    "dev:api": "cd apps/api && uv run uvicorn trainscanner.main:app --reload --port ${API_PORT:-8100}",
+    "build": "npm run build -w apps/web",
+    "lint": "npm run lint -w apps/web && cd apps/api && uv run ruff check .",
+    "test": "cd apps/api && uv run pytest -q",
+    "gen:api": "cd apps/api && uv run python -c \"import json;from trainscanner.main import app;print(json.dumps(app.openapi(),indent=2,ensure_ascii=False))\" > ../../contracts/openapi.json",
+    "setup": "npm install && cd apps/api && uv sync",
+    "check": "npm run lint && cd apps/api && uv run ruff format --check . && uv run pytest -q && cd ../.. && npm run build"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
