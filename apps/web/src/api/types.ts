@@ -52,6 +52,23 @@ export interface Journey {
   operators: string[]
   tags: Tag[]
   legs: Leg[]
+  travellers: number
+  travel_class: number
+}
+
+export interface Stay {
+  id: string
+  kind: 'hostel' | 'hotel' | 'boutique'
+  name: string
+  city: string
+  lat: number
+  lon: number
+  checkin: string
+  nights: number
+  guests: number
+  per_night_cents: number
+  price_cents: number
+  currency: string
 }
 
 export interface JourneySearch {
@@ -78,6 +95,7 @@ export interface CheckoutResponse {
 
 export interface Basket {
   journeys: Journey[]
+  stays: Stay[]
   total_cents: number
   currency: string
   co2_g: number

@@ -126,6 +126,110 @@
               ],
               "title": "Date"
             }
+          },
+          {
+            "name": "max_transfers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 4,
+              "minimum": 0,
+              "default": 4,
+              "title": "Max Transfers"
+            }
+          },
+          {
+            "name": "adults",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9,
+              "minimum": 0,
+              "default": 1,
+              "title": "Adults"
+            }
+          },
+          {
+            "name": "youths",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9,
+              "minimum": 0,
+              "default": 0,
+              "title": "Youths"
+            }
+          },
+          {
+            "name": "seniors",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9,
+              "minimum": 0,
+              "default": 0,
+              "title": "Seniors"
+            }
+          },
+          {
+            "name": "children",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9,
+              "minimum": 0,
+              "default": 0,
+              "title": "Children"
+            }
+          },
+          {
+            "name": "travel_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2,
+              "minimum": 1,
+              "default": 2,
+              "title": "Travel Class"
+            }
+          },
+          {
+            "name": "from_near",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Near"
+            }
+          },
+          {
+            "name": "to_near",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Near"
+            }
           }
         ],
         "responses": {
@@ -135,6 +239,109 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JourneySearch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stays": {
+      "get": {
+        "tags": [
+          "stays"
+        ],
+        "summary": "Search Stays",
+        "description": "Simulated stay offers near a stopover station (no open accommodation API).",
+        "operationId": "search_stays_api_stays_get",
+        "parameters": [
+          {
+            "name": "checkin",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Checkin"
+            }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "City"
+            }
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Lat"
+            }
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Lon"
+            }
+          },
+          {
+            "name": "nights",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 14,
+              "minimum": 1,
+              "title": "Nights"
+            }
+          },
+          {
+            "name": "guests",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9,
+              "minimum": 1,
+              "default": 1,
+              "title": "Guests"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Stay"
+                  },
+                  "title": "Response Search Stays Api Stays Get"
                 }
               }
             }
@@ -268,6 +475,14 @@
             "type": "array",
             "title": "Journeys"
           },
+          "stays": {
+            "items": {
+              "$ref": "#/components/schemas/Stay"
+            },
+            "type": "array",
+            "title": "Stays",
+            "default": []
+          },
           "total_cents": {
             "type": "integer",
             "title": "Total Cents"
@@ -305,6 +520,14 @@
             "maxItems": 10,
             "minItems": 1,
             "title": "Journey Ids"
+          },
+          "stay_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Stay Ids"
           }
         },
         "type": "object",
@@ -323,6 +546,14 @@
             "maxItems": 10,
             "minItems": 1,
             "title": "Journey Ids"
+          },
+          "stay_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Stay Ids"
           }
         },
         "type": "object",
@@ -450,6 +681,16 @@
             },
             "type": "array",
             "title": "Legs"
+          },
+          "travellers": {
+            "type": "integer",
+            "title": "Travellers",
+            "default": 1
+          },
+          "travel_class": {
+            "type": "integer",
+            "title": "Travel Class",
+            "default": 2
           }
         },
         "type": "object",
@@ -630,6 +871,74 @@
           "lon"
         ],
         "title": "Station"
+      },
+      "Stay": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "checkin": {
+            "type": "string",
+            "title": "Checkin"
+          },
+          "nights": {
+            "type": "integer",
+            "title": "Nights"
+          },
+          "guests": {
+            "type": "integer",
+            "title": "Guests"
+          },
+          "per_night_cents": {
+            "type": "integer",
+            "title": "Per Night Cents"
+          },
+          "price_cents": {
+            "type": "integer",
+            "title": "Price Cents"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "EUR"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "city",
+          "lat",
+          "lon",
+          "checkin",
+          "nights",
+          "guests",
+          "per_night_cents",
+          "price_cents"
+        ],
+        "title": "Stay"
       },
       "Stop": {
         "properties": {

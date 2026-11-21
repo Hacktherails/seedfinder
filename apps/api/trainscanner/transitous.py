@@ -7,7 +7,8 @@ import httpx
 
 BASE = "https://api.transitous.org/api"
 HEADERS = {"User-Agent": "trainscanner-hackathon/0.1"}
-RAIL_MODES = "HIGHSPEED_RAIL,LONG_DISTANCE,NIGHT_RAIL,REGIONAL_FAST_RAIL,REGIONAL_RAIL,RAIL"
+# Trains only (walking between stations is added by the planner itself)
+RAIL_MODES = "HIGHSPEED_RAIL,LONG_DISTANCE,NIGHT_RAIL,REGIONAL_RAIL,SUBURBAN"
 
 _client = httpx.Client(base_url=BASE, headers=HEADERS, timeout=20)
 
@@ -20,16 +21,23 @@ def geocode(text: str) -> list[dict]:
 
 
 @lru_cache(maxsize=256)
-def plan(from_id: str, to_id: str, time_iso: str, n: int = 8) -> list[dict]:
+def plan(
+    from_place: str,
+    to_place: str,
+    time_iso: str,
+    max_transfers: int = 4,
+    n: int = 8,
+) -> list[dict]:
+    """from/to are Transitous stop ids or "lat,lon" (then any station within walking reach is used)."""
     r = _client.get(
         "/v1/plan",
         params={
-            "fromPlace": from_id,
-            "toPlace": to_id,
+            "fromPlace": from_place,
+            "toPlace": to_place,
             "time": time_iso,
             "transitModes": RAIL_MODES,
             "numItineraries": n,
-            "maxTransfers": 4,
+            "maxTransfers": max_transfers,
             "searchWindow": 6 * 3600,
         },
     )

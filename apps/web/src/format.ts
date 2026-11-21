@@ -30,3 +30,4 @@ export const modeLabel: Record<string, string> = {
   BUS: 'Bus',
   WALK: 'Walk',
 }
+
