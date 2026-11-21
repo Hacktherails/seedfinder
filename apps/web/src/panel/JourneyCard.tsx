@@ -43,6 +43,7 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
           </div>
           <div className="text-right">
             <div className="text-[19px] font-semibold tracking-tight">{fmtPrice(j.price_cents, j.currency)}</div>
+            {j.travellers > 1 && <div className="text-[11px] text-[var(--muted)]">for {j.travellers}</div>}
             <div className="mt-0.5 flex justify-end gap-1">
               {j.tags.map((t) => (
                 <span

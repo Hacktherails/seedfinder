@@ -6,13 +6,25 @@ from fastapi import APIRouter, HTTPException, Request
 
 from .. import eco, ledger
 from ..config import settings
-from ..models import Account, Basket, BasketRequest, CheckoutRequest, CheckoutResponse, Journey, Order, Quote
+from ..models import (
+    Account,
+    Basket,
+    BasketRequest,
+    CheckoutRequest,
+    CheckoutResponse,
+    Journey,
+    Order,
+    Quote,
+    Stay,
+)
 from .journeys import JOURNEYS
+from .stays import STAYS
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["checkout"])
 
 CHECKOUT_TTL_S = 31 * 60  # Stripe's minimum is 30 min; abandoned sessions expire and release held points
+CLASS_LABEL = {1: "1st class", 2: "2nd class"}
 
 
 def _lookup(ids: list[str]) -> list[Journey]:
@@ -20,6 +32,13 @@ def _lookup(ids: list[str]) -> list[Journey]:
     if not all(js):
         raise HTTPException(404, "journey expired, search again")
     return js  # type: ignore[return-value]
+
+
+def _stays(ids: list[str]) -> list[Stay]:
+    ss = [STAYS.get(i) for i in ids]
+    if not all(ss):
+        raise HTTPException(404, "stay expired, search again")
+    return ss  # type: ignore[return-value]
 
 
 def _account(account_id: str | None) -> Account | None:
@@ -31,8 +50,9 @@ def _account(account_id: str | None) -> Account | None:
     return acc
 
 
-def _quote(js: list[Journey], acc: Account | None, use_points: bool) -> Quote:
-    subtotal = sum(j.price_cents for j in js)
+def _quote(js: list[Journey], ss: list[Stay], acc: Account | None, use_points: bool) -> Quote:
+    """Stays are charged but neither earn nor take ECO points: those only apply to green tickets."""
+    subtotal = sum(j.price_cents for j in js) + sum(s.price_cents for s in ss)
     balance = acc.points if acc else 0
     max_points = eco.max_redeemable_points(js, balance) if acc else 0
     used = max_points if use_points else 0
@@ -52,20 +72,34 @@ def _quote(js: list[Journey], acc: Account | None, use_points: bool) -> Quote:
 @router.post("/basket")
 def basket(body: BasketRequest) -> Basket:
     js = _lookup(body.journey_ids)
+    ss = _stays(body.stay_ids)
     return Basket(
         journeys=js,
-        total_cents=sum(j.price_cents for j in js),
+        stays=ss,
+        total_cents=sum(j.price_cents for j in js) + sum(s.price_cents for s in ss),
         co2_g=sum(j.co2_g for j in js),
         co2_plane_g=sum(j.co2_plane_g for j in js),
-        quote=_quote(js, _account(body.account_id), body.use_points),
+        quote=_quote(js, ss, _account(body.account_id), body.use_points),
     )
+
+
+def _item(name: str, description: str, cents: int, currency: str) -> dict:
+    return {
+        "quantity": 1,
+        "price_data": {
+            "currency": currency.lower(),
+            "unit_amount": cents,
+            "product_data": {"name": name, "description": description},
+        },
+    }
 
 
 @router.post("/checkout")
 def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
     js = _lookup(body.journey_ids)
+    ss = _stays(body.stay_ids)
     acc = _account(body.account_id)
-    q = _quote(js, acc, body.use_points)
+    q = _quote(js, ss, acc, body.use_points)
     try:
         order_id = ledger.create_order(
             acc.id if acc else None,
@@ -79,6 +113,7 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
         raise HTTPException(409, "not enough ECO points") from e
 
     ids = ",".join(body.journey_ids)
+    meta = {"journey_ids": ids, "stay_ids": ",".join(body.stay_ids), "order_id": order_id}
     origin = request.headers.get("origin") or "http://localhost:5173"
     success = f"{origin}/?paid={ids}&order={order_id}"
     if not settings.stripe_secret_key:
@@ -88,25 +123,38 @@ def checkout(body: CheckoutRequest, request: Request) -> CheckoutResponse:
         params: dict = {
             "api_key": settings.stripe_secret_key,
             "mode": "payment",
+            # One line per ticket (each leg is its own operator ticket) and one per stay, in one payment.
             "line_items": [
-                {
-                    "quantity": 1,
-                    "price_data": {
-                        "currency": j.currency.lower(),
-                        "unit_amount": lg.price_cents,
-                        "product_data": {
-                            "name": f"{lg.origin.name} → {lg.destination.name}",
-                            "description": " · ".join(x for x in (lg.operator, lg.line) if x)
-                            or "Train ticket",
-                        },
-                    },
-                }
+                _item(
+                    f"{lg.origin.name} → {lg.destination.name}",
+                    " · ".join(
+                        x
+                        for x in (
+                            lg.operator,
+                            lg.line,
+                            f"{j.travellers} traveller(s)",
+                            CLASS_LABEL[j.travel_class],
+                        )
+                        if x
+                    ),
+                    lg.price_cents,
+                    j.currency,
+                )
                 for j in js
                 for lg in j.legs
                 if lg.price_cents > 0
+            ]
+            + [
+                _item(
+                    s.name,
+                    f"{s.nights} night(s) from {s.checkin} · {s.guests} guest(s)",
+                    s.price_cents,
+                    s.currency,
+                )
+                for s in ss
             ],
-            "metadata": {"journey_ids": ids, "order_id": order_id},
-            "payment_intent_data": {"metadata": {"journey_ids": ids, "order_id": order_id}},
+            "metadata": meta,
+            "payment_intent_data": {"metadata": meta},
             "expires_at": int(time.time()) + CHECKOUT_TTL_S,
         }
         if acc:

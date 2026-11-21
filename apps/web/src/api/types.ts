@@ -58,6 +58,23 @@ export interface Journey {
   legs: Leg[]
   green: boolean
   eco_points: number
+  travellers: number
+  travel_class: number
+}
+
+export interface Stay {
+  id: string
+  kind: 'hostel' | 'hotel' | 'boutique'
+  name: string
+  city: string
+  lat: number
+  lon: number
+  checkin: string
+  nights: number
+  guests: number
+  per_night_cents: number
+  price_cents: number
+  currency: string
 }
 
 export interface JourneySearch {
@@ -109,6 +126,7 @@ export interface Quote {
 
 export interface BasketRequest {
   journey_ids: string[]
+  stay_ids?: string[]
   account_id?: string | null
   use_points?: boolean
 }
@@ -140,7 +158,8 @@ export interface Order {
 
 export interface Basket {
   journeys: Journey[]
-  total_cents: number // before ECO points; quote.total_cents is what gets charged
+  stays: Stay[]
+  total_cents: number // tickets + stays, before ECO points; quote.total_cents is what gets charged
   currency: string
   co2_g: number
   co2_plane_g: number

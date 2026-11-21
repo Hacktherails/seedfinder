@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 
 from .config import WEB_DIST, settings
 from .models import PublicConfig
-from .routes import account, checkout, journeys, network, stations, stripe_webhook
+from .routes import account, checkout, journeys, network, stations, stays, stripe_webhook
 
 app = FastAPI(title="Train Scanner API", version="0.1.0")
 app.add_middleware(
@@ -29,7 +29,7 @@ def public_config() -> PublicConfig:
     return PublicConfig(stripe_publishable_key=settings.vite_stripe_publishable_key or None)
 
 
-for r in (account, stations, journeys, network, checkout, stripe_webhook):
+for r in (account, stations, journeys, stays, network, checkout, stripe_webhook):
     app.include_router(r.router)
 
 

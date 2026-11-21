@@ -88,3 +88,90 @@ def test_checkout_demo_lists_ids(client, fake_plan):
     body = r.json()
     assert body["demo"] is True
     assert f"paid={ids[0]},{ids[1]}&order=" in body["url"]
+
+
+def test_fare_scales_with_party_and_class(client, fake_plan):
+    solo = _search(client)[0]
+    r = client.get(
+        "/api/journeys", params={"from": "A", "to": "B", "date": "2026-12-01", "adults": 2, "travel_class": 1}
+    )
+    duo_first = r.json()["journeys"][0]
+    assert duo_first["id"] != solo["id"]  # another party is another priced offer
+    assert duo_first["travellers"] == 2 and duo_first["travel_class"] == 1
+    assert duo_first["price_cents"] > 2 * solo["price_cents"]
+
+
+def test_near_and_transfers_reach_planner(client, monkeypatch):
+    seen = {}
+
+    def plan(from_place, to_place, when, max_transfers):
+        seen.update(from_place=from_place, to_place=to_place, max_transfers=max_transfers)
+        return [_itinerary("HIGHSPEED_RAIL", 8, "c1")]
+
+    monkeypatch.setattr(transitous, "plan", plan)
+    params = {"from": "A", "to": "B", "max_transfers": 0, "from_near": "48.8,2.3"}
+    r = client.get("/api/journeys", params=params)
+    assert r.status_code == 200
+    assert r.json()["origin"]["id"] == "A"
+    assert seen["from_place"] == "48.8,2.3" and seen["to_place"] == "B"
+    assert seen["max_transfers"] == 0
+
+
+def test_bad_options_rejected(client, fake_plan):
+    base = {"from": "A", "to": "B"}
+    assert client.get("/api/journeys", params={**base, "adults": 0}).status_code == 422
+    assert client.get("/api/journeys", params={**base, "from_near": "nope"}).status_code == 422
+
+
+def test_stays_in_basket_and_checkout(client, fake_plan):
+    jid = _search(client)[0]["id"]
+    r = client.get(
+        "/api/stays",
+        params={"city": "Paris", "lat": 48.8, "lon": 2.3, "checkin": "2026-12-01", "nights": 2, "guests": 3},
+    )
+    assert r.status_code == 200
+    stays = r.json()
+    assert [s["kind"] for s in stays] == ["hostel", "hotel", "boutique"]
+    assert all(s["price_cents"] == 2 * s["per_night_cents"] for s in stays)
+    basket = client.post("/api/basket", json={"journey_ids": [jid], "stay_ids": [stays[1]["id"]]}).json()
+    assert basket["total_cents"] == basket["journeys"][0]["price_cents"] + stays[1]["price_cents"]
+    assert basket["quote"]["subtotal_cents"] == basket["total_cents"]  # stays are charged with the tickets
+    assert client.post("/api/basket", json={"journey_ids": [jid], "stay_ids": ["nope"]}).status_code == 404
+    r = client.post("/api/checkout", json={"journey_ids": [jid], "stay_ids": [stays[1]["id"]]})
+    assert r.status_code == 200 and r.json()["demo"] is True
+
+
+def test_checkout_sends_tickets_and_stays_to_stripe(client, fake_plan, monkeypatch):
+    import stripe
+
+    from trainscanner.config import settings
+
+    jid = _search(client)[0]["id"]
+    params = {"city": "Paris", "lat": 48.8, "lon": 2.3, "checkin": "2026-12-01", "nights": 1, "guests": 1}
+    stay = client.get("/api/stays", params=params).json()[0]
+    sent = {}
+
+    class Session:
+        id = "cs_test_x"
+        url = "https://checkout.stripe.test/s"
+        client_secret = "cs_test_x_secret"
+
+    def create(**kw):
+        sent.update(kw)
+        return Session()
+
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(stripe.checkout.Session, "create", create)
+    r = client.post("/api/checkout", json={"journey_ids": [jid], "stay_ids": [stay["id"]]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["demo"] is False and body["client_secret"] == Session.client_secret
+    amounts = [it["price_data"]["unit_amount"] for it in sent["line_items"]]
+    assert amounts[-1] == stay["price_cents"]
+    assert (
+        sum(amounts)
+        == client.post("/api/basket", json={"journey_ids": [jid], "stay_ids": [stay["id"]]}).json()[
+            "total_cents"
+        ]
+    )
+    assert sent["metadata"]["stay_ids"] == stay["id"]
