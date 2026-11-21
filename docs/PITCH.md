@@ -1,7 +1,7 @@
-# Pitch : script mot à mot avec la démo (3 min)
+# Pitch : script mot à mot avec la démo (2 ou 3 min)
 
 Le texte à dire est en anglais (jury international, app en anglais). Les indications de jeu sont en français.
-Débit visé : environ 140 mots par minute, soit à peu près 430 mots pour 3 minutes. Le déroulé technique et les plans B
+Débit visé : environ 140 mots par minute, soit à peu près 280 mots pour 2 minutes et 430 pour 3 minutes. Le déroulé technique et les plans B
 sont dans [`DEMO.md`](DEMO.md), les règles des seeds dans [`SEEDS.md`](SEEDS.md).
 
 ## Rôles
@@ -17,8 +17,58 @@ sont dans [`DEMO.md`](DEMO.md), les règles des seeds dans [`SEEDS.md`](SEEDS.md
 - [ ] Adresse e-mail de démo prête à taper (une adresse neuve, pour avoir les 100 seeds de bienvenue).
 - [ ] Onglet du dashboard Stripe (test) ouvert sur les paiements, pour montrer le coupon si on a le temps.
 - [ ] Screencast de secours ouvert dans un autre onglet.
+- [ ] **Version 2 min** : se connecter au Seed wallet avant de monter (100 seeds déjà visibles), pour ne pas perdre 15 s à taper l'e-mail.
 
-## Le script
+## Version 2 minutes
+
+Même démo, sans la connexion en direct (faite avant de monter) ni la deuxième réservation : la boucle de fidélité est
+seulement dite. Environ 280 mots.
+
+### 0:00 – 0:15 · Accroche
+
+> ▶ Page d'accueil : « Find your way. Plant a seed. »
+
+**Speaker :**
+"Brussels to Berlin: about 170 kilos of CO₂ by plane, almost nothing by train. Yet we fly, because booking trains
+across Europe means five websites and three payments. We're Seedfinder: we make the train easy, and we reward it."
+
+### 0:15 – 0:35 · Le voyage en un clic
+
+> ▶ Cliquer **Plan** sur « The Imperial Axis of Central Europe ». La carte s'anime.
+
+**Speaker :**
+"Brussels, Cologne, Berlin, Prague. Four days, several operators, live timetables, nights included. One click."
+
+### 0:35 – 0:55 · CO₂ et seeds
+
+> ▶ Montrer le « +N » vert et le CO₂ comparé à l'avion sur une carte de trajet.
+
+**Speaker :**
+"Every leg shows its CO₂ against the same flight. Green tickets plant seeds: one per kilo of CO₂ you keep out of the
+sky. A hundred seeds, one euro off your next green trip."
+
+### 0:55 – 1:30 · Un seul paiement Stripe
+
+> ▶ **Book trip** → Embedded Checkout dans l'app → `4242…` → écran « Bon voyage! » avec le nouveau solde.
+
+**Speaker :**
+"Now what nobody else does: every ticket and every night, across every operator, in one single payment, inside the
+app, with Stripe. … Bon voyage. The seeds are credited by a signed Stripe webhook, never by the browser. Next time,
+they turn into a real Stripe coupon, valid only on a green ticket, with us. So travellers come back: to us, and to
+the train."
+
+### 1:30 – 2:00 · Le modèle et la conclusion
+
+> ▶ Revenir sur l'accueil, section « Every green ticket plants seeds ».
+
+**Speaker :**
+"Does it pay? We earn about 7 % per ticket and give back at most half as seeds, so every order is profitable, and
+unspent seeds are pure margin. It's live on Stripe, and every PR passes an Aikido security gate.
+Seedfinder: find your way, plant a seed. Thank you, we look forward to your bids."
+
+**Si le paiement traîne** (au-delà de 1:30) : le speaker enchaîne directement sur le modèle pendant que le driver termine.
+
+## Version 3 minutes
 
 ### 0:00 – 0:25 · Accroche
 
