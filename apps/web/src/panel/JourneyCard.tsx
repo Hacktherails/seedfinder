@@ -80,6 +80,11 @@ export default function JourneyCard({ j, active, open, onHover, onClick, onBook,
             🌱 {fmtKg(j.co2_g)} · −{Math.round(saved * 100)}% vs ✈︎
           </span>
         </div>
+        {j.green && j.eco_points > 0 && (
+          <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-[var(--green-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--green)]">
+            🌿 Green ticket · +{j.eco_points} ECO points
+          </div>
+        )}
       </button>
 
       {open && (

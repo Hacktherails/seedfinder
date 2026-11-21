@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { ArrowRight, Calendar, Clock3, Compass, Leaf, ShieldCheck, Sparkles, Train } from 'lucide-react'
 import { api } from './api/client'
-import type { Basket, Journey, JourneySearch, LngLat, Network, Station, Stay } from './api/types'
+import type { Account, Basket, Journey, JourneySearch, LngLat, Network, Order, Quote, Station, Stay } from './api/types'
 import { fmtKg, fmtPrice, tomorrow } from './format'
 import { greatCircle, journeyPath } from './map/geo'
 import TrainMap from './map/TrainMap'
 import { defaultOptions, travellers, type TripOptions } from './options'
+import AccountChip from './panel/AccountChip'
+import CheckoutModal from './panel/CheckoutModal'
 import JourneyCard from './panel/JourneyCard'
 import OptionsPanel from './panel/OptionsPanel'
 import Sheet, { type Snap } from './panel/Sheet'
@@ -13,6 +15,7 @@ import StationCard from './panel/StationCard'
 import StayList from './panel/StayList'
 import StopsEditor from './panel/StopsEditor'
 import { load, save, type Passport } from './storage'
+import { canEmbedCheckout } from './stripe'
 import { initialTrip, MAX_STOPS, segmentPlans, staySlots, tripReducer } from './trip'
 
 type Sort = 'best' | 'cheapest' | 'fastest' | 'greenest'
@@ -84,6 +87,40 @@ function PlannerPage({ seed }: PlannerPageProps) {
   const [isPhone, setIsPhone] = useState(() => !window.matchMedia('(min-width: 768px)').matches)
   const runDone = useRef(false)
   const checkoutUrl = useRef<string | null>(null)
+  // ECO points (demo account: email only)
+  const [account, setAccountState] = useState<Account | null>(() => load<Account | null>('account', null))
+  const [usePoints, setUsePoints] = useState(true)
+  const [order, setOrder] = useState<Order | null>(null)
+  const [embedded, setEmbedded] = useState<{ clientSecret: string; orderId: string; quote: Quote } | null>(null)
+  const pendingEmbed = useRef<{ clientSecret: string; orderId: string; quote: Quote } | null>(null)
+
+  const setAccount = useCallback((a: Account | null) => {
+    setAccountState(a)
+    save('account', a)
+  }, [])
+
+  // Refresh the ECO balance of a remembered account
+  useEffect(() => {
+    const id = load<Account | null>('account', null)?.id
+    if (id) api.account(id).then(setAccount, () => setAccount(null))
+  }, [setAccount])
+
+  // The server asks Stripe whether the order is paid, then credits the earned ECO points (idempotent).
+  const confirmOrder = useCallback(
+    async (orderId: string) => {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const o = await api.confirmOrder(orderId)
+          setOrder(o)
+          if (o.account) setAccount(o.account)
+          return
+        } catch {
+          await new Promise((r) => setTimeout(r, 1500))
+        }
+      }
+    },
+    [setAccount],
+  )
 
   useEffect(() => {
     api.network().then(setNetwork, () => {})
@@ -112,27 +149,44 @@ function PlannerPage({ seed }: PlannerPageProps) {
     return () => mq.removeEventListener('change', on)
   }, [])
 
-  // Back from Stripe: stamp the passport and say bon voyage
-  useEffect(() => {
-    const paid = new URLSearchParams(location.search).get('paid')
-    const pending = load<{ searches: JourneySearch[]; ids: string[] } | null>('pending', null, 'session')
-    if (!paid || !pending || pending.ids.join(',') !== paid) return
-    history.replaceState(null, '', '/')
+  // Tickets paid: stamp the passport and say bon voyage
+  const celebrate = (pending: { searches: JourneySearch[]; ids: string[] }) => {
     const js = pending.ids.map((id) => pending.searches.flatMap((s) => s.journeys).find((j) => j.id === id))
     if (js.some((j) => !j)) return
     const savedG = (js as Journey[]).reduce((a, j) => a + Math.max(0, j.co2_plane_g - j.co2_g), 0)
-    const next: Passport = {
-      stamps: [...new Set([...passport.stamps, ...pending.searches.flatMap((s) => [s.origin.name, s.destination.name])])],
-      co2SavedG: passport.co2SavedG + savedG,
-      trips: passport.trips + 1,
-    }
-    setPassport(next)
-    save('passport', next)
+    setPassport((passport) => {
+      const next: Passport = {
+        stamps: [...new Set([...passport.stamps, ...pending.searches.flatMap((s) => [s.origin.name, s.destination.name])])],
+        co2SavedG: passport.co2SavedG + savedG,
+        trips: passport.trips + 1,
+      }
+      save('passport', next)
+      return next
+    })
     const s = pending.searches
     // Final destination: last segment, or the one before it when the last is the return to the origin.
     const isReturn = s.length > 1 && s.at(-1)!.destination.name === s[0].origin.name
     setArrived({ city: s.at(isReturn ? -2 : -1)!.destination.name, savedG })
-  }, [])
+  }
+
+  // Back from Stripe's hosted page (or demo mode)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const cancelled = params.get('cancelled')
+    if (cancelled) {
+      history.replaceState(null, '', '/')
+      api.cancelOrder(cancelled).then((o) => o.account && setAccount(o.account), () => {})
+      return
+    }
+    const paid = params.get('paid')
+    const orderId = params.get('order')
+    const pending = load<{ searches: JourneySearch[]; ids: string[] } | null>('pending', null, 'session')
+    if (!paid || !pending || pending.ids.join(',') !== paid) return
+    history.replaceState(null, '', '/')
+    if (orderId) void confirmOrder(orderId)
+    celebrate(pending)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on load
+  }, [confirmOrder, setAccount])
 
   const plans = segmentPlans(trip)
   const { party, travelClass, maxTransfers, anyStation } = options
@@ -230,19 +284,21 @@ function PlannerPage({ seed }: PlannerPageProps) {
 
   const ids = searches.map((_, i) => selected[i])
   const basketKey = ids.length && ids.every(Boolean) ? `${ids.join(',')};${stayIds.join(',')}` : ''
+  const accountId = account?.id ?? null
+  const balance = account?.points ?? 0
   useEffect(() => {
     setBasketError(null)
     if (!basketKey) return
     let stale = false
     const [js, ss] = basketKey.split(';').map((x) => x.split(',').filter(Boolean))
-    api.basket(js, ss).then(
+    api.basket({ journey_ids: js, stay_ids: ss, account_id: accountId, use_points: usePoints }).then(
       (data) => !stale && setBasket({ key: basketKey, data }),
       (e: Error) => !stale && setBasketError(e.message),
     )
     return () => {
       stale = true
     }
-  }, [basketKey])
+  }, [basketKey, accountId, balance, usePoints])
   const total = basket?.key === basketKey ? basket.data : null
 
   const stations = useMemo(() => {
@@ -287,11 +343,19 @@ function PlannerPage({ seed }: PlannerPageProps) {
     if (trip.returnDate) stops.push(stops[0])
     setBooking(true)
     setBasketError(null)
+    setOrder(null)
     save('pending', { searches, ids: picked }, 'session')
     runDone.current = !hasWebGL
     checkoutUrl.current = null
+    pendingEmbed.current = null
     const go = () => {
-      if (runDone.current && checkoutUrl.current) location.href = checkoutUrl.current
+      if (!runDone.current) return
+      if (pendingEmbed.current) {
+        setEmbedded(pendingEmbed.current) // Stripe Embedded Checkout, inside the app
+        pendingEmbed.current = null
+        setCheckoutRun(null)
+        setBooking(false)
+      } else if (checkoutUrl.current) location.href = checkoutUrl.current
     }
     if (hasWebGL) {
       setSnap('peek')
@@ -303,9 +367,15 @@ function PlannerPage({ seed }: PlannerPageProps) {
         },
       })
     }
-    api.checkout(picked, stays).then(
-      ({ url }) => {
-        checkoutUrl.current = url
+    const useThem = usePoints && (total?.quote.max_points ?? 0) > 0
+    canEmbedCheckout()
+      .then((embed) => api.checkout({ journey_ids: picked, stay_ids: stays, account_id: accountId, use_points: useThem, embedded: embed }))
+      .then(
+      (r) => {
+        if (r.client_secret) {
+          pendingEmbed.current = { clientSecret: r.client_secret, orderId: r.order_id, quote: r.quote }
+          if (accountId) api.account(accountId).then(setAccount, () => {}) // points are now held
+        } else checkoutUrl.current = r.url ?? null
         go()
       },
       (e: Error) => {
@@ -314,6 +384,28 @@ function PlannerPage({ seed }: PlannerPageProps) {
         setBooking(false)
       },
     )
+  }
+
+  // Embedded Checkout: paid inside the modal, no page reload
+  const embeddedRef = useRef(embedded)
+  useEffect(() => {
+    embeddedRef.current = embedded
+  }, [embedded])
+  const onEmbeddedComplete = useCallback(() => {
+    const e = embeddedRef.current
+    if (!e) return
+    setTimeout(() => {
+      setEmbedded(null)
+      void confirmOrder(e.orderId)
+      const pending = load<{ searches: JourneySearch[]; ids: string[] } | null>('pending', null, 'session')
+      if (pending) celebrate(pending)
+    }, 1200) // let Stripe show its success tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- celebrate only uses state setters
+  }, [confirmOrder])
+  const closeEmbedded = () => {
+    const e = embedded
+    setEmbedded(null)
+    if (e) api.cancelOrder(e.orderId).then((o) => o.account && setAccount(o.account), () => {})
   }
 
   const tapStation = (s: Station) => {
@@ -360,12 +452,15 @@ function PlannerPage({ seed }: PlannerPageProps) {
           <h1 className="text-[17px] font-semibold tracking-tight">
             train<span className="text-[var(--red)]">●</span>scanner
           </h1>
-          <span
-            title={`${passport.trips} trips · ${fmtKg(passport.co2SavedG)} CO₂ saved vs flying`}
-            className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[12px] text-[var(--muted)]"
-          >
-            🎟 {passport.stamps.length} · 🌱 {fmtKg(passport.co2SavedG)}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              title={`${passport.trips} trips · ${fmtKg(passport.co2SavedG)} CO₂ saved vs flying`}
+              className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[12px] text-[var(--muted)]"
+            >
+              🎟 {passport.stamps.length} · 🌱 {fmtKg(passport.co2SavedG)}
+            </span>
+            <AccountChip account={account} onChange={setAccount} />
+          </div>
         </header>
 
         {focus ? (
@@ -498,9 +593,23 @@ function PlannerPage({ seed }: PlannerPageProps) {
             {landed && status === 'done' && (
               <footer className="sticky bottom-0 border-t border-[var(--line)] bg-[var(--card)] px-4 py-3">
                 {basketError && <p className="mb-2 rounded-xl bg-[var(--red-soft)] p-2 text-[13px] text-[var(--red)]">{basketError}</p>}
+                {total && <EcoRow basket={total} signedIn={Boolean(account)} usePoints={usePoints} onToggle={setUsePoints} />}
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[13px]">
-                    <div className="text-[18px] font-semibold tracking-tight">{total ? fmtPrice(total.total_cents, total.currency) : '…'}</div>
+                    <div className="text-[18px] font-semibold tracking-tight">
+                      {total ? (
+                        <>
+                          {total.quote.discount_cents > 0 && (
+                            <span className="mr-1.5 text-[13px] font-normal text-[var(--muted)] line-through">
+                              {fmtPrice(total.total_cents, total.currency)}
+                            </span>
+                          )}
+                          {fmtPrice(total.quote.total_cents, total.currency)}
+                        </>
+                      ) : (
+                        '…'
+                      )}
+                    </div>
                     {total && (
                       <div className="text-[var(--muted)]">
                         {total.journeys.length} ticket{total.journeys.length > 1 ? 's' : ''}
@@ -534,6 +643,15 @@ function PlannerPage({ seed }: PlannerPageProps) {
             <p className="mt-1 text-[14px] text-[var(--muted)]">
               Your tickets are booked. You keep {fmtKg(arrived.savedG)} of CO₂ out of the sky.
             </p>
+            {order?.status === 'paid' && order.account && (
+              <div className="mt-4 rounded-2xl bg-[var(--green-soft)] p-3 text-[var(--green)]">
+                <p className="text-2xl font-semibold tracking-tight">+{order.points_earned} ECO</p>
+                <p className="text-[12px]">
+                  {order.points_used > 0 && <>{order.points_used} points spent · </>}
+                  balance <b>{order.account.points.toLocaleString('en')}</b> points
+                </p>
+              </div>
+            )}
             <p className="mt-3 text-[13px]">
               Passport: <b>{passport.stamps.length}</b> stamps · <b>{fmtKg(passport.co2SavedG)}</b> saved
             </p>
@@ -547,6 +665,57 @@ function PlannerPage({ seed }: PlannerPageProps) {
           </div>
         </div>
       )}
+
+      {embedded && (
+        <CheckoutModal
+          clientSecret={embedded.clientSecret}
+          quote={embedded.quote}
+          onComplete={onEmbeddedComplete}
+          onClose={closeEmbedded}
+        />
+      )}
+    </div>
+  )
+}
+
+/** ECO points line of the basket footer. Every figure comes from the API quote. */
+function EcoRow({
+  basket,
+  signedIn,
+  usePoints,
+  onToggle,
+}: {
+  basket: Basket
+  signedIn: boolean
+  usePoints: boolean
+  onToggle: (v: boolean) => void
+}) {
+  const q = basket.quote
+  const earnable = basket.journeys.reduce((a, j) => a + j.eco_points, 0)
+  if (!signedIn)
+    return earnable > 0 ? (
+      <p className="mb-2 rounded-xl bg-[var(--green-soft)] px-3 py-2 text-[12px] text-[var(--green)]">
+        🌿 Sign in to earn <b>+{earnable} ECO points</b> on this trip and spend them on your next green ticket.
+      </p>
+    ) : null
+  if (!q.points_earned && !q.max_points) return null
+  return (
+    <div className="mb-2 rounded-xl bg-[var(--green-soft)] px-3 py-2 text-[12px] text-[var(--green)]">
+      {q.max_points > 0 && (
+        <label className="flex cursor-pointer items-center justify-between gap-3 text-[13px]">
+          <span>
+            Use <b>{usePoints ? q.points_used : q.max_points}</b> of your {q.balance} ECO points
+            {usePoints && q.discount_cents > 0 && <b> · −{fmtPrice(q.discount_cents, q.currency)}</b>}
+          </span>
+          <input
+            type="checkbox"
+            checked={usePoints}
+            onChange={(e) => onToggle(e.target.checked)}
+            className="size-4 accent-[var(--green)]"
+          />
+        </label>
+      )}
+      {q.points_earned > 0 && <p className={q.max_points > 0 ? 'mt-1' : ''}>🌿 You earn +{q.points_earned} ECO points with this trip</p>}
     </div>
   )
 }

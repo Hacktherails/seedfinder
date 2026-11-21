@@ -15,6 +15,31 @@ Objectif : arriver demain à BeCentral avec tout qui tourne, **sans rien install
 
 Python 3.11 n'est **pas** à installer : uv le télécharge tout seul.
 
+## Démarrage rapide (une commande)
+
+```bash
+npm start                 # installe ce qui manque, demande les clés Stripe test une fois, lance API + front (+ webhooks)
+npm start -- --share      # idem + URL publique https (Cloudflare Quick Tunnel, sans compte), pour un téléphone ou le jury
+npm start -- --reset      # remet à zéro les points ECO (démo propre)
+npm start -- --prod       # construit et lance l'image Docker de production sur http://localhost:8100
+```
+
+Le reste de ce document détaille les étapes à la main.
+
+## Déployer (Render, plan gratuit)
+
+1. Se connecter sur render.com avec GitHub, puis ouvrir
+   `https://render.com/deploy?repo=https://github.com/The-trappists/train-scanner`. Render lit `render.yaml`.
+2. Renseigner `STRIPE_SECRET_KEY` (sk_test_…) et `VITE_STRIPE_PUBLISHABLE_KEY` (pk_test_…), puis Apply.
+   L'URL ressemble à `https://trainscanner-xxxx.onrender.com`.
+3. Optionnel, pour les webhooks : Stripe Dashboard (mode test) → Developers → Webhooks → endpoint
+   `https://<app>/api/stripe/webhook`, avec les événements `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded` et `checkout.session.expired`. Copier le `whsec_…` dans
+   `STRIPE_WEBHOOK_SECRET`. Sans webhook, les paiements sont quand même confirmés : l'app interroge Stripe au retour.
+
+Limites du plan gratuit : le service s'endort après 15 min sans trafic (≈ 1 min de réveil, **ouvrir l'URL juste
+avant le pitch**). Le disque est éphémère, donc les points ECO repartent de zéro à chaque redéploiement.
+
 ## 2. Installer le projet
 
 ```bash

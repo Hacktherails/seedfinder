@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from .. import pricing, transitous
+from .. import eco, pricing, transitous
 from ..models import Journey, JourneySearch, Leg, Station, Stop
 
 router = APIRouter(prefix="/api", tags=["journeys"])
@@ -66,7 +66,7 @@ def _journey(raw: dict, plane_km: float, fare: Fare) -> Journey:
     key = "|".join(f"{lg.line}@{lg.origin.time}" for lg in transit)
     # The fare is part of the id: the same train for another party is another priced offer.
     jid = f"j{abs(hash(key + fare.key)) % 10**10}"
-    return Journey(
+    j = Journey(
         id=jid,
         departure=legs[0].origin.time,
         arrival=legs[-1].destination.time,
@@ -74,13 +74,16 @@ def _journey(raw: dict, plane_km: float, fare: Fare) -> Journey:
         transfers=max(0, len(transit) - 1),
         price_cents=sum(lg.price_cents for lg in legs),
         co2_g=sum(lg.co2_g for lg in legs),
-        co2_plane_g=int(plane_km * 1.1 * pricing.CO2_PLANE_PER_KM),
+        co2_plane_g=int(plane_km * eco.PLANE_DETOUR * pricing.CO2_PLANE_PER_KM),
         operators=ops,
         tags=[],
         legs=legs,
         travellers=sum(fare.party.values()),
         travel_class=fare.travel_class,
     )
+    j.green = eco.is_green(j)
+    j.eco_points = eco.points_earned(j)
+    return j
 
 
 def _place(stop_id: str, near: str | None) -> str:

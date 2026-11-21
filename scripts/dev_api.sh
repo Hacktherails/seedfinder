@@ -5,7 +5,7 @@ set -euo pipefail
 
 export PATH="$PATH:$HOME/.stripe/bin"  # default Stripe CLI install dir
 PORT="${API_PORT:-8100}"
-EVENTS="checkout.session.completed,checkout.session.async_payment_succeeded"
+EVENTS="checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.expired"
 cd "$(dirname "$0")/../apps/api"
 
 if [[ "${STRIPE_LISTEN:-1}" != "0" ]] && command -v stripe >/dev/null 2>&1; then

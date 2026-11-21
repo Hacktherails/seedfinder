@@ -1,6 +1,7 @@
 """Stripe webhook receiver. Forward locally with:
 
-stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded \
+stripe listen \
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.expired \
   --forward-to localhost:8100/api/stripe/webhook
 """
 
@@ -9,6 +10,7 @@ import logging
 import stripe
 from fastapi import APIRouter, HTTPException, Request
 
+from .. import ledger
 from ..config import settings
 
 log = logging.getLogger(__name__)
@@ -38,10 +40,18 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
 
     if event.type in _PAID_EVENTS:
         session = event.data.object.to_dict()
-        journey_id = (session.get("metadata") or {}).get("journey_id")
+        meta = session.get("metadata") or {}
+        journey_ids = [i for i in (meta.get("journey_ids") or meta.get("journey_id") or "").split(",") if i]
         # checkout.session.completed also fires for delayed methods (SEPA) before funds arrive.
-        if journey_id and session.get("payment_status") == "paid":
-            PAID_JOURNEYS[journey_id] = session["id"]
-            log.info("journey %s paid (session %s)", journey_id, session["id"])
+        if journey_ids and session.get("payment_status") == "paid":
+            for jid in journey_ids:
+                PAID_JOURNEYS[jid] = session["id"]
+            if meta.get("order_id"):
+                ledger.mark_paid(meta["order_id"])  # credits earned ECO points, idempotent
+            log.info("journeys %s paid (session %s)", ",".join(journey_ids), session["id"])
+    elif event.type == "checkout.session.expired":
+        order_id = (event.data.object.to_dict().get("metadata") or {}).get("order_id")
+        if order_id:
+            ledger.cancel(order_id)  # abandoned checkout: release held ECO points
 
     return {"received": True}

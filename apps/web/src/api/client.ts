@@ -1,4 +1,18 @@
-import type { Basket, CheckoutResponse, Health, JourneySearch, Network, Station, Stay } from './types'
+import type {
+  Account,
+  Basket,
+  BasketRequest,
+  CheckoutRequest,
+  CheckoutResponse,
+  EcoProgram,
+  Health,
+  JourneySearch,
+  Network,
+  Order,
+  PublicConfig,
+  Station,
+  Stay,
+} from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
@@ -37,17 +51,27 @@ export interface StayQuery {
   guests: number
 }
 
-const post = <T>(path: string, body: unknown) =>
-  request<T>(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
 
 export const api = {
   health: () => request<Health>('/api/health'),
+  config: () => request<PublicConfig>('/api/config'),
   network: () => request<Network>('/api/network'),
   stations: (q: string, signal?: AbortSignal) => request<Station[]>(`/api/stations?${qs({ q })}`, { signal }),
   journeys: (q: JourneyQuery, signal?: AbortSignal) =>
     request<JourneySearch>(`/api/journeys?${qs({ ...q })}`, { signal }),
   stays: (q: StayQuery, signal?: AbortSignal) => request<Stay[]>(`/api/stays?${qs({ ...q })}`, { signal }),
-  basket: (journey_ids: string[], stay_ids: string[]) => post<Basket>('/api/basket', { journey_ids, stay_ids }),
-  checkout: (journey_ids: string[], stay_ids: string[]) =>
-    post<CheckoutResponse>('/api/checkout', { journey_ids, stay_ids }),
+  signIn: (email: string) => post<Account>('/api/account', { email }),
+  account: (id: string) => request<Account>(`/api/account/${encodeURIComponent(id)}`),
+  ecoProgram: () => request<EcoProgram>('/api/eco/program'),
+  /** Basket total and ECO quote (points earned / spendable), always computed by the API. */
+  basket: (body: BasketRequest) => post<Basket>('/api/basket', body),
+  checkout: (body: CheckoutRequest) => post<CheckoutResponse>('/api/checkout', body),
+  confirmOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/confirm`),
+  cancelOrder: (id: string) => post<Order>(`/api/orders/${encodeURIComponent(id)}/cancel`),
 }

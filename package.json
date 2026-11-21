@@ -5,9 +5,10 @@
     "apps/web"
   ],
   "scripts": {
+    "start": "scripts/start.sh",
     "dev": "npm run dev -w apps/web",
     "dev:api": "scripts/dev_api.sh",
-    "dev:stripe": "stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:${API_PORT:-8100}/api/stripe/webhook",
+    "dev:stripe": "stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.expired --forward-to localhost:${API_PORT:-8100}/api/stripe/webhook",
     "build": "npm run build -w apps/web",
     "lint": "npm run lint -w apps/web && cd apps/api && uv run ruff check .",
     "test": "cd apps/api && uv run pytest -q",

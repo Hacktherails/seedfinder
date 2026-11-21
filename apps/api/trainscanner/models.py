@@ -46,6 +46,8 @@ class Journey(BaseModel):
     operators: list[str]
     tags: list[str]  # cheapest | fastest | greenest
     legs: list[Leg]
+    green: bool = False  # eligible to earn and spend ECO points
+    eco_points: int = 0  # ECO points this ticket earns
     travellers: int = 1
     travel_class: int = 2
 
@@ -67,6 +69,46 @@ class Network(BaseModel):
     corridors: list[Corridor]
 
 
+class PublicConfig(BaseModel):
+    stripe_publishable_key: str | None = None
+
+
+class EcoProgram(BaseModel):
+    point_value_cents: int
+    grams_per_point: int
+    commission_rate: float
+    reward_budget_share: float
+    max_discount_share: float
+    min_redeem_points: int
+    green_max_co2_ratio: float
+    min_flight_km: int
+
+
+class Account(BaseModel):
+    id: str  # demo bearer token: no password, whoever holds the id owns the points
+    email: str
+    points: int
+    co2_saved_g: int
+    trips: int
+
+
+class SignInRequest(BaseModel):
+    email: str
+
+
+class Quote(BaseModel):
+    """What the traveller pays for a basket, ECO points included. Computed server-side only."""
+
+    subtotal_cents: int
+    discount_cents: int
+    total_cents: int
+    currency: str = "EUR"
+    points_used: int
+    points_earned: int
+    max_points: int  # most points this basket could use
+    balance: int  # account balance before this order
+
+
 class Stay(BaseModel):
     id: str
     kind: str  # hostel | hotel | boutique
@@ -84,23 +126,39 @@ class Stay(BaseModel):
 
 class BasketRequest(BaseModel):
     journey_ids: list[str] = Field(min_length=1, max_length=10)
+    account_id: str | None = None
+    use_points: bool = False
     stay_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class Basket(BaseModel):
     journeys: list[Journey]
     stays: list[Stay] = []
-    total_cents: int
+    total_cents: int  # tickets + stays, before ECO points; quote.total_cents is what gets charged
     currency: str = "EUR"
     co2_g: int
     co2_plane_g: int
+    quote: Quote
 
 
-class CheckoutRequest(BaseModel):
-    journey_ids: list[str] = Field(min_length=1, max_length=10)
-    stay_ids: list[str] = Field(default_factory=list, max_length=10)
+class CheckoutRequest(BasketRequest):
+    embedded: bool = True  # Stripe Embedded Checkout inside the app; False = redirect to the hosted page
 
 
 class CheckoutResponse(BaseModel):
-    url: str
+    order_id: str
+    url: str | None = None  # hosted Checkout page, or the success URL in demo mode
+    client_secret: str | None = None  # Embedded Checkout
     demo: bool
+    quote: Quote
+
+
+class Order(BaseModel):
+    id: str
+    journey_ids: list[str]
+    status: str  # pending | paid | cancelled
+    points_used: int
+    points_earned: int
+    total_cents: int
+    co2_saved_g: int
+    account: Account | None = None

@@ -87,7 +87,7 @@ def test_checkout_demo_lists_ids(client, fake_plan):
     assert r.status_code == 200
     body = r.json()
     assert body["demo"] is True
-    assert f"paid={ids[0]},{ids[1]}" in body["url"]
+    assert f"paid={ids[0]},{ids[1]}&order=" in body["url"]
 
 
 def test_fare_scales_with_party_and_class(client, fake_plan):
@@ -135,6 +135,7 @@ def test_stays_in_basket_and_checkout(client, fake_plan):
     assert all(s["price_cents"] == 2 * s["per_night_cents"] for s in stays)
     basket = client.post("/api/basket", json={"journey_ids": [jid], "stay_ids": [stays[1]["id"]]}).json()
     assert basket["total_cents"] == basket["journeys"][0]["price_cents"] + stays[1]["price_cents"]
+    assert basket["quote"]["subtotal_cents"] == basket["total_cents"]  # stays are charged with the tickets
     assert client.post("/api/basket", json={"journey_ids": [jid], "stay_ids": ["nope"]}).status_code == 404
     r = client.post("/api/checkout", json={"journey_ids": [jid], "stay_ids": [stays[1]["id"]]})
     assert r.status_code == 200 and r.json()["demo"] is True
@@ -151,7 +152,9 @@ def test_checkout_sends_tickets_and_stays_to_stripe(client, fake_plan, monkeypat
     sent = {}
 
     class Session:
+        id = "cs_test_x"
         url = "https://checkout.stripe.test/s"
+        client_secret = "cs_test_x_secret"
 
     def create(**kw):
         sent.update(kw)
@@ -160,7 +163,9 @@ def test_checkout_sends_tickets_and_stays_to_stripe(client, fake_plan, monkeypat
     monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_x")
     monkeypatch.setattr(stripe.checkout.Session, "create", create)
     r = client.post("/api/checkout", json={"journey_ids": [jid], "stay_ids": [stay["id"]]})
-    assert r.json() == {"url": Session.url, "demo": False}
+    assert r.status_code == 200
+    body = r.json()
+    assert body["demo"] is False and body["client_secret"] == Session.client_secret
     amounts = [it["price_data"]["unit_amount"] for it in sent["line_items"]]
     assert amounts[-1] == stay["price_cents"]
     assert (

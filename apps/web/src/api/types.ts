@@ -5,6 +5,10 @@ export interface Health {
   stripe_configured: boolean
 }
 
+export interface PublicConfig {
+  stripe_publishable_key?: string | null
+}
+
 export type LngLat = [number, number]
 
 export interface Station {
@@ -52,6 +56,8 @@ export interface Journey {
   operators: string[]
   tags: Tag[]
   legs: Leg[]
+  green: boolean
+  eco_points: number
   travellers: number
   travel_class: number
 }
@@ -88,16 +94,74 @@ export interface Network {
   corridors: Corridor[]
 }
 
+export interface EcoProgram {
+  point_value_cents: number
+  grams_per_point: number
+  commission_rate: number
+  reward_budget_share: number
+  max_discount_share: number
+  min_redeem_points: number
+  green_max_co2_ratio: number
+  min_flight_km: number
+}
+
+export interface Account {
+  id: string
+  email: string
+  points: number
+  co2_saved_g: number
+  trips: number
+}
+
+export interface Quote {
+  subtotal_cents: number
+  discount_cents: number
+  total_cents: number
+  currency: string
+  points_used: number
+  points_earned: number
+  max_points: number
+  balance: number
+}
+
+export interface BasketRequest {
+  journey_ids: string[]
+  stay_ids?: string[]
+  account_id?: string | null
+  use_points?: boolean
+}
+
+export interface CheckoutRequest extends BasketRequest {
+  embedded?: boolean
+}
+
 export interface CheckoutResponse {
-  url: string
+  order_id: string
+  url?: string | null
+  client_secret?: string | null
   demo: boolean
+  quote: Quote
+}
+
+export type OrderStatus = 'pending' | 'paid' | 'cancelled'
+
+export interface Order {
+  id: string
+  journey_ids: string[]
+  status: OrderStatus
+  points_used: number
+  points_earned: number
+  total_cents: number
+  co2_saved_g: number
+  account?: Account | null
 }
 
 export interface Basket {
   journeys: Journey[]
   stays: Stay[]
-  total_cents: number
+  total_cents: number // tickets + stays, before ECO points; quote.total_cents is what gets charged
   currency: string
   co2_g: number
   co2_plane_g: number
+  quote: Quote
 }
