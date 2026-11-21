@@ -85,10 +85,10 @@ function posAt(t: Track, d: number): LngLat {
   return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]
 }
 
-/** Position + heading (degrees, counter-clockwise from east) at distance d km along the track; heading spans ±1.5 km so it turns gradually. */
-export function pointAt(t: Track, d: number): { pos: LngLat; yaw: number } {
-  const a = posAt(t, d - HEADING_KM)
-  const b = posAt(t, d + HEADING_KM)
+/** Position + heading (degrees, counter-clockwise from east) at distance d km along the track; heading spans ±headingKm so it turns gradually. */
+export function pointAt(t: Track, d: number, headingKm = HEADING_KM): { pos: LngLat; yaw: number } {
+  const a = posAt(t, d - headingKm)
+  const b = posAt(t, d + headingKm)
   const dx = (b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180)
   return { pos: posAt(t, d), yaw: (Math.atan2(b[1] - a[1], dx) * 180) / Math.PI }
 }

@@ -14,7 +14,13 @@ import { useStationView } from './useStationView'
 const STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const RED: [number, number, number] = [229, 50, 45]
 const INK: [number, number, number] = [24, 24, 27]
-const TRAIN_COLORS: [number, number, number][] = [RED, [31, 79, 224], [242, 183, 5], INK, [24, 160, 88]]
+// Neutral livery: mid-to-dark greys that still read on the light basemap; the active train stays ink.
+const TRAIN_COLORS: [number, number, number][] = [
+  [112, 112, 118],
+  [84, 84, 90],
+  [140, 140, 146],
+  [60, 60, 66],
+]
 
 type RGB = [number, number, number]
 interface Train {
@@ -114,13 +120,14 @@ export default function TrainMap(props: Props) {
           track,
           d: Math.random() * track.length,
           dir: k ? -1 : 1,
-          pxPerSec: 22 + Math.random() * 18,
+          // Screen-space speed: fast values made far-zoom trains cover a corridor in ~2 s and flip at each end.
+          pxPerSec: 6 + Math.random() * 4,
           color: TRAIN_COLORS[(i + k) % TRAIN_COLORS.length],
           group: 'idle',
         })
     })
     tracks.journeys.forEach(({ id, track }, i) => {
-      t.push({ track, d: 0, dir: 1, pxPerSec: 45, color: TRAIN_COLORS[i % TRAIN_COLORS.length], group: id })
+      t.push({ track, d: 0, dir: 1, pxPerSec: 16, color: TRAIN_COLORS[i % TRAIN_COLORS.length], group: id })
     })
     trains.current = t
   }, [tracks])
@@ -283,18 +290,21 @@ export default function TrainMap(props: Props) {
       const m = mpp(lat, zoom)
       const hasJourneys = p.journeys.length > 0
       const cars: Car[] = []
-      const carPx = 7
+      const carPx = 5
       const dims = (alpha: number): [number, number, number] => [
         Math.max(carPx * m, 12) * alpha,
-        Math.max(2.4 * m, 2) * alpha,
-        Math.max(2.6 * m, 2.2) * alpha,
+        Math.max(1.5 * m, 2) * alpha,
+        Math.max(1.7 * m, 2.2) * alpha,
       ]
 
       const pushTrain = (track: Track, d: number, dir: number, color: RGB, size: number, doubleHeaded = false) => {
         const [hl, , hh] = dims(size)
         const gap = (hl * 2.25) / 1000 // km between car centres (car length is 2*hl)
-        for (let k = 0; k < 3; k++) {
-          const { pos, yaw } = pointAt(track, d - dir * k * gap)
+        // Far away a car spans km of curvy track: one unit, heading averaged over its length, or it wobbles.
+        const n = hl > 1200 ? 1 : 3
+        const headingKm = Math.max(1.5, gap * 3)
+        for (let k = 0; k < n; k++) {
+          const { pos, yaw } = pointAt(track, d - dir * k * gap, headingKm)
           const head = dir > 0 ? yaw : yaw + 180
           const tailLoco = k === 2 && doubleHeaded
           cars.push({ pos: [pos[0], pos[1], hh], yaw: tailLoco ? head + 180 : head, color, scale: dims(size), loco: k === 0 || tailLoco })
