@@ -1,6 +1,6 @@
 """API models — source of truth for apps/web/src/api/types.ts."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Station(BaseModel):
@@ -12,6 +12,7 @@ class Station(BaseModel):
 
 
 class Stop(BaseModel):
+    id: str | None = None  # Transitous stopId, usable as from/to in /api/journeys
     name: str
     lat: float
     lon: float
@@ -64,8 +65,20 @@ class Network(BaseModel):
     corridors: list[Corridor]
 
 
+class BasketRequest(BaseModel):
+    journey_ids: list[str] = Field(min_length=1, max_length=10)
+
+
+class Basket(BaseModel):
+    journeys: list[Journey]
+    total_cents: int
+    currency: str = "EUR"
+    co2_g: int
+    co2_plane_g: int
+
+
 class CheckoutRequest(BaseModel):
-    journey_id: str
+    journey_ids: list[str] = Field(min_length=1, max_length=10)
 
 
 class CheckoutResponse(BaseModel):
