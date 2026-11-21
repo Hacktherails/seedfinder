@@ -35,14 +35,41 @@ export interface Track {
   length: number
 }
 
-export function makeTrack(path: LngLat[]): Track {
+const STEP_KM = 0.5
+const HEADING_KM = 1.5
+
+/** Even ~0.5 km resample, then a few binomial passes: removes zig-zags (endpoints stay fixed). */
+function smoothPath(path: LngLat[]): LngLat[] {
+  if (path.length < 3) return path
+  const raw = [0]
+  for (let i = 1; i < path.length; i++) raw.push(raw[i - 1] + haversineKm(path[i - 1], path[i]))
+  const n = Math.max(2, Math.ceil(raw[raw.length - 1] / STEP_KM) + 1)
+  let pts: LngLat[] = []
+  for (let k = 0, i = 1; k < n; k++) {
+    const d = (k / (n - 1)) * raw[raw.length - 1]
+    while (i < path.length - 1 && raw[i] < d) i++
+    const f = Math.min(1, Math.max(0, (d - raw[i - 1]) / (raw[i] - raw[i - 1] || 1)))
+    pts.push([path[i - 1][0] + (path[i][0] - path[i - 1][0]) * f, path[i - 1][1] + (path[i][1] - path[i - 1][1]) * f])
+  }
+  for (let pass = 0; pass < 8; pass++) {
+    const prev = pts
+    pts = prev.map((p, i) =>
+      i === 0 || i === prev.length - 1
+        ? p
+        : [(prev[i - 1][0] + 2 * p[0] + prev[i + 1][0]) / 4, (prev[i - 1][1] + 2 * p[1] + prev[i + 1][1]) / 4],
+    )
+  }
+  return pts
+}
+
+export function makeTrack(raw: LngLat[]): Track {
+  const path = smoothPath(raw)
   const cum = [0]
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + haversineKm(path[i - 1], path[i]))
   return { path, cum, length: cum[cum.length - 1] }
 }
 
-/** Position + heading (degrees, counter-clockwise from east) at distance d km along the track. */
-export function pointAt(t: Track, d: number): { pos: LngLat; yaw: number } {
+function posAt(t: Track, d: number): LngLat {
   const { path, cum } = t
   const dist = Math.min(Math.max(d, 0), t.length)
   let lo = 0
@@ -54,12 +81,16 @@ export function pointAt(t: Track, d: number): { pos: LngLat; yaw: number } {
   }
   const a = path[lo]
   const b = path[hi] ?? a
-  const seg = cum[hi] - cum[lo] || 1
-  const f = (dist - cum[lo]) / seg
-  const pos: LngLat = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]
+  const f = (dist - cum[lo]) / (cum[hi] - cum[lo] || 1)
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]
+}
+
+/** Position + heading (degrees, counter-clockwise from east) at distance d km along the track; heading spans ±headingKm so it turns gradually. */
+export function pointAt(t: Track, d: number, headingKm = HEADING_KM): { pos: LngLat; yaw: number } {
+  const a = posAt(t, d - headingKm)
+  const b = posAt(t, d + headingKm)
   const dx = (b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180)
-  const dy = b[1] - a[1]
-  return { pos, yaw: (Math.atan2(dy, dx) * 180) / Math.PI }
+  return { pos: posAt(t, d), yaw: (Math.atan2(b[1] - a[1], dx) * 180) / Math.PI }
 }
 
 export function bounds(paths: LngLat[][]): [LngLat, LngLat] {

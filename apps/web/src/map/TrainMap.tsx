@@ -1,21 +1,26 @@
 import { MapboxOverlay } from '@deck.gl/mapbox'
-import { ColumnLayer, PathLayer } from '@deck.gl/layers'
+import { PathLayer, ScatterplotLayer } from '@deck.gl/layers'
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
-import { CubeGeometry } from '@luma.gl/engine'
 import { type GeoJSONSource, Map as MlMap, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { type Dispatch, useEffect, useMemo, useRef, useState } from 'react'
 import type { Journey, LngLat, Network, Station } from '../api/types'
 import type { Trip, TripAction } from '../trip'
 import { bounds, inRing, journeyPath, makeTrack, pointAt, type Track } from './geo'
+import { CAR, LOCO } from './trainMesh'
 import { useRouteDrag } from './useRouteDrag'
 import { useStationView } from './useStationView'
 
 const STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const RED: [number, number, number] = [229, 50, 45]
 const INK: [number, number, number] = [24, 24, 27]
-const TRAIN_COLORS: [number, number, number][] = [RED, [31, 79, 224], [242, 183, 5], INK, [24, 160, 88]]
-const CUBE = new CubeGeometry()
+// Neutral livery: mid-to-dark greys that still read on the light basemap; the active train stays ink.
+const TRAIN_COLORS: [number, number, number][] = [
+  [112, 112, 118],
+  [84, 84, 90],
+  [140, 140, 146],
+  [60, 60, 66],
+]
 
 type RGB = [number, number, number]
 interface Train {
@@ -31,6 +36,7 @@ interface Car {
   yaw: number
   color: RGB
   scale: [number, number, number]
+  loco: boolean
 }
 
 /** Push a polygon out by ~0.5 m so the red station shell hides the white building underneath. */
@@ -44,11 +50,28 @@ function grow(poly: number[][][]): number[][][] {
 /** Metres per screen pixel at a latitude/zoom (MapLibre uses 512px tiles). */
 const mpp = (lat: number, zoom: number) => (78271.517 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom
 
+/** Fake sinuous path through every stop: S-curve between neighbours, zero offset at each station. */
+function sinuousPath(stops: LngLat[]): LngLat[] {
+  const out: LngLat[] = [stops[0]]
+  for (let i = 1; i < stops.length; i++) {
+    const [a, b] = [stops[i - 1], stops[i]]
+    const k = Math.cos((a[1] * Math.PI) / 180)
+    const [dx, dy] = [(b[0] - a[0]) * k, b[1] - a[1]]
+    const len = Math.hypot(dx, dy) || 1
+    for (let s = 1; s <= 40; s++) {
+      const t = s / 40
+      const off = 0.15 * len * Math.sin(2 * Math.PI * t)
+      out.push([a[0] + (b[0] - a[0]) * t + (-dy / len) * (off / k), a[1] + (b[1] - a[1]) * t + (dx / len) * off])
+    }
+  }
+  return out
+}
+
 interface Props {
   network: Network | null
   journeys: Journey[]
   activeId: string | null
-  ride: Journey | null
+  checkoutRun: { stops: LngLat[]; onDone: () => void } | null
   stations: Station[]
   padding: { top: number; bottom: number; left: number; right: number }
   trip: Trip
@@ -60,7 +83,6 @@ interface Props {
   onHover: (id: string | null) => void
   onSelect: (id: string) => void
   onStationClick: (s: Station) => void
-  onRideEnd: () => void
 }
 
 export default function TrainMap(props: Props) {
@@ -98,13 +120,14 @@ export default function TrainMap(props: Props) {
           track,
           d: Math.random() * track.length,
           dir: k ? -1 : 1,
-          pxPerSec: 22 + Math.random() * 18,
+          // Screen-space speed: fast values made far-zoom trains cover a corridor in ~2 s and flip at each end.
+          pxPerSec: 6 + Math.random() * 4,
           color: TRAIN_COLORS[(i + k) % TRAIN_COLORS.length],
           group: 'idle',
         })
     })
     tracks.journeys.forEach(({ id, track }, i) => {
-      t.push({ track, d: 0, dir: 1, pxPerSec: 45, color: TRAIN_COLORS[i % TRAIN_COLORS.length], group: id })
+      t.push({ track, d: 0, dir: 1, pxPerSec: 16, color: TRAIN_COLORS[i % TRAIN_COLORS.length], group: id })
     })
     trains.current = t
   }, [tracks])
@@ -130,6 +153,8 @@ export default function TrainMap(props: Props) {
 
     map.setPadding(live.current.padding)
     map.on('load', () => {
+      // Seen once: canvas measured mid-layout (158 px tall) and never resized; re-measure when ready.
+      map.resize()
       map.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.28, position: [1.4, 200, 35] })
       map.setLayoutProperty('building', 'visibility', 'none')
       const height = ['coalesce', ['get', 'render_height'], 8]
@@ -166,7 +191,7 @@ export default function TrainMap(props: Props) {
         source: 'route',
         filter: ['>=', ['get', 'segment'], 0],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#18181b', 'line-width': 3 },
+        paint: { 'line-color': '#18181b', 'line-width': 4.5 },
       })
       map.addLayer({
         id: 'route-return',
@@ -242,7 +267,10 @@ export default function TrainMap(props: Props) {
     // Animation loop
     let raf = 0
     let last = performance.now()
-    let rideStart = 0
+    let runObj: Props['checkoutRun'] = null
+    let runTrack: Track | null = null
+    let runStart = 0
+    let runDone = false
     // Loader train state (all times in ms, 0 = unset)
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
     let loadStart = 0
@@ -262,19 +290,24 @@ export default function TrainMap(props: Props) {
       const m = mpp(lat, zoom)
       const hasJourneys = p.journeys.length > 0
       const cars: Car[] = []
-      const carPx = 7
+      const carPx = 5
       const dims = (alpha: number): [number, number, number] => [
         Math.max(carPx * m, 12) * alpha,
-        Math.max(2.4 * m, 2) * alpha,
-        Math.max(2.6 * m, 2.2) * alpha,
+        Math.max(1.5 * m, 2) * alpha,
+        Math.max(1.7 * m, 2.2) * alpha,
       ]
 
-      const pushTrain = (track: Track, d: number, dir: number, color: RGB, size: number) => {
+      const pushTrain = (track: Track, d: number, dir: number, color: RGB, size: number, doubleHeaded = false) => {
         const [hl, , hh] = dims(size)
-        const gap = (hl * 2.25) / 1000 // km between car centres
-        for (let k = 0; k < 3; k++) {
-          const { pos, yaw } = pointAt(track, d - dir * k * gap)
-          cars.push({ pos: [pos[0], pos[1], hh], yaw: dir > 0 ? yaw : yaw + 180, color, scale: dims(size) })
+        const gap = (hl * 2.25) / 1000 // km between car centres (car length is 2*hl)
+        // Far away a car spans km of curvy track: one unit, heading averaged over its length, or it wobbles.
+        const n = hl > 1200 ? 1 : 3
+        const headingKm = Math.max(1.5, gap * 3)
+        for (let k = 0; k < n; k++) {
+          const { pos, yaw } = pointAt(track, d - dir * k * gap, headingKm)
+          const head = dir > 0 ? yaw : yaw + 180
+          const tailLoco = k === 2 && doubleHeaded
+          cars.push({ pos: [pos[0], pos[1], hh], yaw: tailLoco ? head + 180 : head, color, scale: dims(size), loco: k === 0 || tailLoco })
         }
       }
 
@@ -318,30 +351,41 @@ export default function TrainMap(props: Props) {
           progress = 0.85 + 0.1 * (1 - Math.exp(-(t - 3000) / 10000))
         }
       }
-      if (loading && !p.ride) {
-        const d = progress * loaderTrack.length
-        pushTrain(loaderTrack, d, 1, INK, 1.4)
-        for (let i = 0; i < loaderTrack.path.length && loaderTrack.cum[i] <= d; i++) lit.push(loaderTrack.path[i])
-        lit.push(pointAt(loaderTrack, d).pos)
-        if (lit.length < 2) lit = []
+      const litUpTo = (track: Track, d: number) => {
+        const pts: LngLat[] = []
+        for (let i = 0; i < track.path.length && track.cum[i] <= d; i++) pts.push(track.path[i])
+        pts.push(pointAt(track, d).pos)
+        return pts.length < 2 ? [] : pts
       }
 
-      if (p.ride) {
-        const track = tracks.journeys.find((t) => t.id === p.ride!.id)?.track
-        if (track) {
-          if (!rideStart) rideStart = now
-          const rideD = ((now - rideStart) / 14000) * track.length // ~14 s ride, whatever the frame rate
-          const { pos, yaw } = pointAt(track, rideD)
-          pushTrain(track, rideD, 1, INK, 1.4)
-          map.jumpTo({ center: pos, bearing: 90 - yaw, zoom: 9.5, pitch: 62, padding: { left: 0, top: 0, right: 0, bottom: 0 } })
-          if (rideD >= track.length) {
-            rideStart = 0
-            map.setPadding(p.padding)
-            p.onRideEnd()
-          }
+      const run = p.checkoutRun
+      if (run !== runObj) {
+        runObj = run
+        runStart = 0
+        runDone = false
+        runTrack = run && run.stops.length >= 2 ? makeTrack(sinuousPath(run.stops)) : null
+        if (runTrack)
+          map.fitBounds(bounds([runTrack.path]), { padding: { left: 60, right: 60, top: 80, bottom: 80 }, pitch: 45, bearing: 0, duration: 500 })
+      }
+
+      if (runTrack && runObj) {
+        if (!runStart) runStart = now
+        const t = Math.min(1, (now - runStart) / (reduced.matches ? 300 : 1400))
+        if (!reduced.matches) {
+          const d = (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2) * runTrack.length
+          pushTrain(runTrack, d, 1, INK, 1.4, true)
+          lit = litUpTo(runTrack, d)
+        }
+        if (t >= 1 && !runDone) {
+          runDone = true
+          runObj.onDone()
         }
       } else {
-        rideStart = 0
+        if (loading) {
+          const d = progress * loaderTrack.length
+          pushTrain(loaderTrack, d, 1, INK, 1.4, true)
+          lit = litUpTo(loaderTrack, d)
+        }
         for (const t of trains.current) {
           if ((hasJourneys || loading) && t.group === 'idle') continue
           if (t.group === 'idle') {
@@ -354,12 +398,13 @@ export default function TrainMap(props: Props) {
           const active = t.group === p.activeId
           const dimmed = p.activeId && t.group !== 'idle' && !active
           if (dimmed) continue
-          pushTrain(t.track, t.d, t.dir, active ? INK : t.color, active ? 1.3 : 1)
+          pushTrain(t.track, t.d, t.dir, active ? INK : t.color, active ? 1.3 : 1, active)
         }
       }
 
       const stations = p.stations
       overlayRef.current?.setProps({
+        pickingRadius: 8,
         layers: [
           new PathLayer({
             id: 'corridors',
@@ -379,52 +424,59 @@ export default function TrainMap(props: Props) {
             getPath: (t: { track: Track }) => t.track.path,
             getColor: (t: { id: string }) =>
               t.id === p.activeId ? [...RED, 255] : p.activeId ? [24, 24, 27, 40] : [24, 24, 27, 150],
-            getWidth: (t: { id: string }) => (t.id === p.activeId ? 5 : 3),
+            getWidth: (t: { id: string }) => (t.id === p.activeId ? 8 : 4),
             widthUnits: 'pixels',
             capRounded: true,
             jointRounded: true,
             parameters: { depthCompare: 'always' },
-            pickable: !p.ride,
+            pickable: true,
             onHover: (info) => p.onHover((info.object as { id: string } | undefined)?.id ?? null),
             onClick: (info) => info.object && p.onSelect((info.object as { id: string }).id),
             updateTriggers: { getColor: p.activeId, getWidth: p.activeId },
           }),
-          new ColumnLayer<Station>({
+          new ScatterplotLayer<Station>({
             id: 'stations',
             data: stations,
             getPosition: (s) => [s.lon, s.lat],
             radiusUnits: 'pixels',
-            radius: 4,
-            diskResolution: 20,
-            getElevation: Math.max(10 * m, 20),
+            getRadius: 6,
+            radiusMinPixels: 5,
+            radiusMaxPixels: 12,
+            billboard: true,
+            stroked: true,
+            lineWidthUnits: 'pixels',
+            getLineWidth: 2,
             getFillColor: [...RED, 255],
-            extruded: true,
-            pickable: !p.ride,
+            getLineColor: [255, 255, 255, 255],
+            parameters: { depthCompare: 'always' },
+            pickable: true,
             visible: zoom < 13.5,
             onClick: (info) => info.object && !map.getCanvas().dataset.dragging && p.onStationClick(info.object),
-            updateTriggers: { getElevation: Math.round(zoom * 4) },
           }),
           new PathLayer({
             id: 'loader-lit',
             data: lit.length ? [{ path: lit }] : [],
             getPath: (d: { path: LngLat[] }) => d.path,
             getColor: [...RED, 255],
-            getWidth: 5,
+            getWidth: 8,
             widthUnits: 'pixels',
             capRounded: true,
             jointRounded: true,
             parameters: { depthCompare: 'always' },
           }),
-          new SimpleMeshLayer<Car>({
-            id: 'trains',
-            data: cars,
-            mesh: CUBE,
-            getPosition: (c) => c.pos,
-            getOrientation: (c) => [0, c.yaw, 0],
-            getScale: (c) => c.scale,
-            getColor: (c) => c.color,
-            material: { ambient: 0.55, diffuse: 0.6, shininess: 12, specularColor: [255, 255, 255] },
-          }),
+          ...[true, false].map(
+            (loco) =>
+              new SimpleMeshLayer<Car>({
+                id: loco ? 'trains-loco' : 'trains-cars',
+                data: cars.filter((c) => c.loco === loco),
+                mesh: loco ? LOCO : CAR,
+                getPosition: (c) => c.pos,
+                getOrientation: (c) => [0, c.yaw, 0],
+                getScale: (c) => c.scale,
+                getColor: (c) => c.color,
+                material: { ambient: 0.5, diffuse: 0.65, shininess: 40, specularColor: [255, 255, 255] },
+              }),
+          ),
         ],
       })
       raf = requestAnimationFrame(frame)
@@ -477,13 +529,13 @@ export default function TrainMap(props: Props) {
   // Panel/sheet size changes
   const { top, bottom, left, right } = props.padding
   useEffect(() => {
-    if (!props.ride) mapRef.current?.easeTo({ padding: { top, bottom, left, right }, duration: 300 })
-  }, [top, bottom, left, right, props.ride])
+    mapRef.current?.easeTo({ padding: { top, bottom, left, right }, duration: 300 })
+  }, [top, bottom, left, right])
 
   // Frame the search results, or the trip stops while there are none yet (the station view owns the camera while focused)
   useEffect(() => {
     const map = mapRef.current
-    if (!map || props.focus || props.ride) return
+    if (!map || props.focus) return
     const paths = props.journeys.length ? props.journeys.map(journeyPath) : props.trip.stops.length >= 2 ? props.segmentPaths : []
     if (!paths.length) return
     const cam = map.cameraForBounds(bounds(paths), { padding: { left: 60, right: 60, top: 80, bottom: 80 } })

@@ -462,6 +462,31 @@
           }
         }
       }
+    },
+    "/api/stripe/webhook": {
+      "post": {
+        "tags": [
+          "stripe"
+        ],
+        "summary": "Stripe Webhook",
+        "operationId": "stripe_webhook_api_stripe_webhook_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Stripe Webhook Api Stripe Webhook Post"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
