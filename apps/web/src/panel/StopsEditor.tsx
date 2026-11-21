@@ -20,7 +20,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const stepBtn =
   'grid size-9 place-items-center rounded-full text-[18px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] disabled:opacity-30'
 const headerBtn =
-  'rounded-full px-2 py-0.5 text-[12px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] disabled:opacity-40 disabled:hover:bg-transparent'
+  'rounded-full px-2 py-0.5 text-[12px] text-[var(--green)] hover:bg-[var(--card)] hover:text-[var(--ink)] disabled:opacity-40 disabled:hover:bg-transparent'
 
 interface Drag {
   from: number
@@ -88,9 +88,9 @@ export default function StopsEditor({ trip, dispatch, onFocus }: Props) {
   }
 
   return (
-    <section className="mx-4" aria-labelledby="itinerary-title">
-      <div className="mb-1.5 flex items-center gap-1 px-1">
-        <h2 id="itinerary-title" className="mr-auto text-[11px] font-semibold tracking-widest text-[var(--muted)] uppercase">
+    <section aria-labelledby="itinerary-title">
+      <div className="mb-1.5 flex items-center gap-1 px-2 pt-1">
+        <h2 id="itinerary-title" className="mr-auto text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase">
           Itinerary
         </h2>
         <button
@@ -109,7 +109,7 @@ export default function StopsEditor({ trip, dispatch, onFocus }: Props) {
         )}
       </div>
 
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--card)]">
+      <div className="rounded-2xl bg-[var(--card)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
         {n < 2 ? (
           <>
             <StationInput label="From" dot="hollow" value={stops[0]?.station ?? null} onChange={setEnd(0)} autoFocus />
@@ -142,7 +142,7 @@ export default function StopsEditor({ trip, dispatch, onFocus }: Props) {
                     onPointerCancel={() => setDrag(null)}
                     onKeyDown={onKey(i)}
                     style={{ touchAction: 'none' }}
-                    className={`ml-1 grid h-10 w-6 shrink-0 place-items-center rounded text-[15px] leading-none text-[var(--muted)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--red)] focus-visible:outline-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                    className={`ml-1 grid h-10 w-6 shrink-0 place-items-center rounded text-[15px] leading-none text-[var(--muted)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--green)] focus-visible:outline-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                   >
                     ⠿
                   </button>

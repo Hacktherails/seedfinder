@@ -6,8 +6,8 @@ import { fmtKg, fmtPrice, tomorrow } from './format'
 import { greatCircle, journeyPath } from './map/geo'
 import TrainMap from './map/TrainMap'
 import { defaultOptions, travellers, type TripOptions } from './options'
-import AccountChip from './panel/AccountChip'
 import CheckoutModal from './panel/CheckoutModal'
+import EcoWallet from './panel/EcoWallet'
 import JourneyCard from './panel/JourneyCard'
 import OptionsPanel from './panel/OptionsPanel'
 import Sheet, { type Snap } from './panel/Sheet'
@@ -447,20 +447,18 @@ function PlannerPage({ seed }: PlannerPageProps) {
         />
       )}
 
+      <EcoWallet
+        account={account}
+        onChange={setAccount}
+        passport={passport}
+        earning={total ? total.journeys.reduce((a, j) => a + j.eco_points, 0) : 0}
+      />
+
       <Sheet snap={snap} onSnapChange={setSnap} label="Trip planner">
-        <header className="flex items-center justify-between px-5 pt-5 pb-3">
+        <header className="px-5 pt-5 pb-3">
           <h1 className="text-[17px] font-semibold tracking-tight">
-            train<span className="text-[var(--red)]">●</span>scanner
+            seed<span className="text-[var(--green)]">●</span>finder
           </h1>
-          <div className="flex items-center gap-1.5">
-            <span
-              title={`${passport.trips} trips · ${fmtKg(passport.co2SavedG)} CO₂ saved vs flying`}
-              className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[12px] text-[var(--muted)]"
-            >
-              🎟 {passport.stamps.length} · 🌱 {fmtKg(passport.co2SavedG)}
-            </span>
-            <AccountChip account={account} onChange={setAccount} />
-          </div>
         </header>
 
         {focus ? (
@@ -481,8 +479,11 @@ function PlannerPage({ seed }: PlannerPageProps) {
           </div>
         ) : (
           <>
-            <StopsEditor trip={trip} dispatch={dispatch} onFocus={tapStation} />
-            <OptionsPanel options={options} onChange={setOptions} />
+            {/* Itinerary + options: one green block, same radius as the panel (24 px − 8 px padding = 16 px cards) */}
+            <div className="mx-3 rounded-3xl bg-[var(--green-soft)] p-2 shadow-[0_2px_12px_rgba(19,138,75,0.10)]">
+              <StopsEditor trip={trip} dispatch={dispatch} onFocus={tapStation} />
+              <OptionsPanel options={options} onChange={setOptions} />
+            </div>
 
             {(plans.length > 1 || slots.length > 0) && (
               <nav aria-label="Trip steps" className="mx-4 mt-4 flex gap-2 overflow-x-auto pb-1">
@@ -561,7 +562,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
               {status === 'idle' && (
                 <div className="px-1 pt-3 text-[14px] leading-relaxed text-[var(--muted)]">
                   <p>Where to?</p>
-                  <p className="mt-1">Type two stations, or tap the red dots on the map. We compare every operator and combine them into one ticket.</p>
+                  <p className="mt-1">Type two stations, or tap the green dots on the map. We compare every operator and combine them into one ticket.</p>
                 </div>
               )}
               {staySlot && (
@@ -577,6 +578,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
                     <JourneyCard
                       key={j.id}
                       j={j}
+                      maxDuration={Math.max(...journeys.map((x) => x.duration_s))}
                       active={(hovered ?? activeSelected) === j.id}
                       open={activeSelected === j.id}
                       onHover={setHovered}
@@ -636,7 +638,7 @@ function PlannerPage({ seed }: PlannerPageProps) {
       {arrived && (
         <div className="absolute inset-0 grid place-items-center bg-black/20 backdrop-blur-[2px]">
           <div className="pop w-[340px] rounded-3xl bg-[var(--card)] p-6 text-center shadow-2xl">
-            <div className="mx-auto grid size-20 rotate-[-8deg] place-items-center rounded-full border-2 border-dashed border-[var(--red)] text-[11px] font-semibold tracking-widest text-[var(--red)] uppercase">
+            <div className="mx-auto grid size-20 rotate-[-8deg] place-items-center rounded-full border-2 border-dashed border-[var(--green)] text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase">
               {arrived.city.split(/[ -]/)[0]}
             </div>
             <h2 className="mt-4 text-xl font-semibold tracking-tight">Bon voyage!</h2>
@@ -798,7 +800,7 @@ function LandingPage({ onPlan }: LandingProps) {
             <div className="grid size-8 place-items-center rounded-lg bg-[var(--ink)] text-[var(--card)]">
               <Train className="size-4" />
             </div>
-            <span className="text-sm font-semibold tracking-tight">Train Scanner</span>
+            <span className="text-sm font-semibold tracking-tight">Seedfinder</span>
           </div>
           <button
             type="button"
@@ -812,7 +814,7 @@ function LandingPage({ onPlan }: LandingProps) {
       </header>
 
       <main className="mx-auto max-w-6xl px-5 pt-12 pb-16 sm:px-8 sm:pt-16 sm:pb-20">
-        <section className="relative overflow-hidden rounded-3xl border border-[var(--line)] bg-[radial-gradient(circle_at_12%_12%,var(--red-soft),transparent_38%),radial-gradient(circle_at_88%_8%,var(--green-soft),transparent_32%),linear-gradient(180deg,var(--card),#f6f2eb)] px-6 py-12 sm:px-10 sm:py-16">
+        <section className="relative overflow-hidden rounded-3xl border border-[var(--line)] bg-[radial-gradient(circle_at_12%_12%,var(--green-soft),transparent_38%),radial-gradient(circle_at_88%_8%,var(--green-soft),transparent_32%),linear-gradient(180deg,var(--card),#f6f2eb)] px-6 py-12 sm:px-10 sm:py-16">
           <p className="inline-flex items-center rounded-full border border-[var(--line)] bg-white/70 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--muted)]">
             Europe Rail Planner
           </p>
@@ -892,7 +894,7 @@ function LandingPage({ onPlan }: LandingProps) {
                   <span>Bonus EcoToken sur les trajets identifies comme les plus ecologiques.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--red)]" />
+                  <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--green)]" />
                   <span>Progression visible dans ton passeport voyageur et recompenses cumulatives.</span>
                 </li>
               </ul>

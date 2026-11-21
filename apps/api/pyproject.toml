@@ -1,7 +1,7 @@
 [project]
 name = "trainscanner-api"
 version = "0.1.0"
-description = "Train Scanner — FastAPI backend (multi-leg search, combine, Stripe checkout)"
+description = "Seedfinder — FastAPI backend (multi-leg search, combine, Stripe checkout)"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.165.0",

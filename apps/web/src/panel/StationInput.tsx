@@ -53,7 +53,7 @@ export default function StationInput({ label, dot, value, onChange, autoFocus }:
     <div className="relative">
       <label className="flex items-center gap-3 px-4 py-3">
         <span
-          className={`size-2.5 shrink-0 rounded-full border-2 border-[var(--red)] ${dot === 'solid' ? 'bg-[var(--red)]' : ''}`}
+          className={`size-2.5 shrink-0 rounded-full border-2 border-[var(--green)] ${dot === 'solid' ? 'bg-[var(--green)]' : ''}`}
         />
         <span className="sr-only">{label}</span>
         <input

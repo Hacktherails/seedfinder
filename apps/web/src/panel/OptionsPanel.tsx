@@ -1,4 +1,4 @@
-// Options: who travels and how. Deliberately separate from the itinerary (where and when).
+// Options: who travels and how. Its own card next to the itinerary (where and when), in the same green block.
 import { useState } from 'react'
 import { CHANGES, MAX_TRAVELLERS, PARTY_ROWS, summary, travellers, type TripOptions } from '../options'
 
@@ -24,7 +24,7 @@ function Segmented<T extends string | number>({
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <span className="text-[13px]">{label}</span>
-      <div role="group" aria-label={label} className="flex rounded-lg bg-[var(--card)] p-0.5 text-[12px] shadow-sm">
+      <div role="group" aria-label={label} className="flex rounded-lg bg-[var(--green-soft)] p-0.5 text-[12px]">
         {items.map((it) => (
           <button
             key={String(it.value)}
@@ -51,7 +51,7 @@ function Toggle({ label, hint, on, onChange }: { label: string; hint: string; on
       <input type="checkbox" role="switch" checked={on} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
       <span
         aria-hidden
-        className="relative h-5 w-9 shrink-0 rounded-full bg-[var(--line)] transition-colors peer-checked:bg-[var(--ink)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--red)] after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-[var(--card)] after:transition-transform peer-checked:after:translate-x-4"
+        className="relative h-5 w-9 shrink-0 rounded-full bg-[var(--line)] transition-colors peer-checked:bg-[var(--ink)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--green)] after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-[var(--card)] after:transition-transform peer-checked:after:translate-x-4"
       />
     </label>
   )
@@ -63,8 +63,8 @@ export default function OptionsPanel({ options: o, onChange }: Props) {
   const set = (patch: Partial<TripOptions>) => onChange({ ...o, ...patch })
 
   return (
-    <section className="mx-4 mt-4" aria-labelledby="options-title">
-      <div className="rounded-2xl bg-[var(--hover)]">
+    <section className="mt-2" aria-labelledby="options-title">
+      <div className="rounded-2xl bg-[var(--card)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
         <button
           type="button"
           aria-expanded={open}
@@ -72,7 +72,7 @@ export default function OptionsPanel({ options: o, onChange }: Props) {
           className="flex w-full items-center gap-3 px-4 py-3 text-left"
         >
           <span className="min-w-0 flex-1">
-            <span id="options-title" className="block text-[11px] font-semibold tracking-widest text-[var(--muted)] uppercase">
+            <span id="options-title" className="block text-[11px] font-semibold tracking-widest text-[var(--green)] uppercase">
               Options
             </span>
             <span className="block truncate text-[13px]">{summary(o)}</span>
