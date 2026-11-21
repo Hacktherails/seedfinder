@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
+from .routes import checkout, journeys, network, stations
 
 app = FastAPI(title="Train Scanner API", version="0.1.0")
 app.add_middleware(
@@ -18,3 +19,7 @@ def health() -> dict[str, str | bool]:
         "offline_demo": settings.offline_demo,
         "stripe_configured": bool(settings.stripe_secret_key),
     }
+
+
+for r in (stations, journeys, network, checkout):
+    app.include_router(r.router)
